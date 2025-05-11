@@ -52,13 +52,6 @@ jobs:
           github_token: ${{ steps.generate-token.outputs.token }}
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
           
-      - name: 🧰 Install JSR CLI
-        run: bun install -g @jsr/cli
-
-      - name: 🔒 Set up OIDC for JSR
-        uses: jsr-io/setup-jsr@v0.1
-        with:
-          auth-type: 'id-token'
  
       - name: 📡 Publish to JSR
-        run: jsr publish
+        run: npx jsr publish
