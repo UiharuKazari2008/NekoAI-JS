@@ -1,20 +1,16 @@
 {
     "name": "@nekoai/js",
-    "version": "0.1.0",
+    "version": "1.0.0",
     "license": "MIT",
-    "exports": {
-        ".": {
-            "types": "./dist/index.d.ts",
-            "import": "./dist/index.mjs"
-        }
+    "exports": "./dist/index.mjs",
+    "types": "./dist/index.d.ts",
+    "publish": {
+        "include": [
+            "dist/**/*",
+            "README.md",
+            "LICENSE"
+        ]
     },
-    "files": [
-        "dist/**/*.js",
-        "dist/**/*.mjs",
-        "dist/**/*.d.ts",
-        "README.md",
-        "LICENSE"
-    ],
     "description": "A lightweight JavaScript/TypeScript API for NovelAI image generation and director tools",
     "repository": "github:Nya-Foundation/NekoAI-JS"
 }
