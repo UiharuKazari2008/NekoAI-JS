@@ -46,10 +46,8 @@ jobs:
         with:
           semantic_version: 21
           extra_plugins: |
-            @semantic-release/git
-            @semantic-release/exec
-          dry_run: false
-          install_plugins_command: "bun install"
+            @semantic-release/git@10.0.1
+            @semantic-release/exec@6.0.3
         env:
           github_token: ${{ steps.generate-token.outputs.token }}
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}

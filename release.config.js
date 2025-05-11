@@ -7,7 +7,7 @@ module.exports = {
     [
       '@semantic-release/exec',
       {
-        prepareCmd: 'node -e "const pkg=require(\'./package.json\'); const jsr=require(\'./jsr.json\'); jsr.version=pkg.version; require(\'fs\').writeFileSync(\'./jsr.json\', JSON.stringify(jsr, null, 4) + \'\\n\')"',
+        prepareCmd: 'node -e "const fs = require(\'fs\'); const pkg = JSON.parse(fs.readFileSync(\'./package.json\')); const jsr = JSON.parse(fs.readFileSync(\'./jsr.json\')); jsr.version = pkg.version; fs.writeFileSync(\'./jsr.json\', JSON.stringify(jsr, null, 4) + \'\\n\');"',
       }
     ],
     '@semantic-release/github',
