@@ -1,0 +1,78 @@
+{
+  "name": "nekoai-js",
+  "version": "0.1.0",
+  "description": "A lightweight JavaScript/TypeScript API for NovelAI image generation and director tools",
+  "main": "dist/index.js",
+  "module": "dist/index.mjs",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup src/index.ts --format cjs,esm --watch --dts",
+    "lint": "eslint src --ext .ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "clean": "rm -rf dist",
+    "prepublishOnly": "npm run clean && npm run build",
+    "semantic-release": "semantic-release"
+  },
+  "keywords": [
+    "novelai",
+    "ai",
+    "image-generation",
+    "anime",
+    "stable-diffusion"
+  ],
+  "author": "",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Nya-Foundation/NekoAI-JS.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Nya-Foundation/NekoAI-JS/issues"
+  },
+  "homepage": "https://github.com/Nya-Foundation/NekoAI-JS#readme",
+  "devDependencies": {
+    "@semantic-release/commit-analyzer": "^10.0.1",
+    "@semantic-release/exec": "^6.0.3",
+    "@semantic-release/git": "^10.0.1",
+    "@semantic-release/github": "^9.0.4",
+    "@semantic-release/npm": "^10.0.5",
+    "@semantic-release/release-notes-generator": "^11.0.7",
+    "@types/node": "^20.10.5",
+    "@typescript-eslint/eslint-plugin": "^6.15.0",
+    "@typescript-eslint/parser": "^6.15.0",
+    "canvas": "^2.11.2",
+    "eslint": "^8.56.0",
+    "semantic-release": "^21.0.0",
+    "tsup": "^8.0.1",
+    "typescript": "^5.3.3",
+    "vitest": "^1.0.4"
+  },
+  "dependencies": {
+    "dotenv": "^16.5.0",
+    "jszip": "^3.10.1",
+    "prettier": "^3.5.3",
+    "zod": "^3.22.4"
+  },
+  "optionalDependencies": {
+    "canvas": "^2.11.2"
+  }
+}

@@ -1,0 +1,64 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+  id-token: write
+  packages: write
+
+jobs:
+  release:
+    name: Release and Publish (Bun)
+    runs-on: ubuntu-latest
+
+    steps:
+      # Generate Token for the GitHub App
+      - name: Generate GitHub App Token
+        id: generate-token
+        # Uses App ID and Private Key secrets to generate a short-lived installation token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ secrets.CI_APP_ID }}
+          private-key: ${{ secrets.CI_APP_PRIVATE_KEY }}
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          token: ${{ steps.generate-token.outputs.token }}
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: ⚡ Setup Bun
+        uses: oven-sh/setup-bun@v1
+
+      - name: 📥 Install dependencies with Bun
+        run: bun install
+
+      - name: 🏗 Build project
+        run: bun run build
+
+      - name: 🚀 Semantic Release
+        uses: cycjimmy/semantic-release-action@v4
+        with:
+          semantic_version: 21
+          extra_plugins: |
+            @semantic-release/git
+            @semantic-release/exec
+        env:
+          github_token: ${{ steps.generate-token.outputs.token }}
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+          
+      - name: 🧰 Install JSR CLI
+        run: bun install -g @jsr/cli
+
+      - name: 🔒 Set up OIDC for JSR
+        uses: jsr-io/setup-jsr@v0.1
+        with:
+          auth-type: 'id-token'
+ 
+      - name: 📡 Publish to JSR
+        run: jsr publish
