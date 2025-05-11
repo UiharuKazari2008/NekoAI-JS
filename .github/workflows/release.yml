@@ -52,6 +52,5 @@ jobs:
           github_token: ${{ steps.generate-token.outputs.token }}
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
           
- 
       - name: 📡 Publish to JSR
         run: npx jsr publish
