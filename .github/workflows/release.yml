@@ -51,6 +51,3 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ steps.generate-token.outputs.token }}
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
-          
-      - name: 📡 Publish to JSR
-        run: npx jsr publish --allow-slow-types
