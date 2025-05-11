@@ -48,6 +48,8 @@ jobs:
           extra_plugins: |
             @semantic-release/git
             @semantic-release/exec
+          dry_run: false
+          install_plugins_command: "bun install"
         env:
           github_token: ${{ steps.generate-token.outputs.token }}
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}

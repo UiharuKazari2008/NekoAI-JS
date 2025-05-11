@@ -51,7 +51,7 @@
   "homepage": "https://github.com/Nya-Foundation/NekoAI-JS#readme",
   "devDependencies": {
     "@semantic-release/commit-analyzer": "^10.0.1",
-    "@semantic-release/exec": "^7.1.0",
+    "@semantic-release/exec": "^6.0.3",
     "@semantic-release/git": "^10.0.1",
     "@semantic-release/github": "^9.0.4",
     "@semantic-release/npm": "^10.0.5",
@@ -61,7 +61,7 @@
     "@typescript-eslint/parser": "^6.15.0",
     "canvas": "^2.11.2",
     "eslint": "^8.56.0",
-    "semantic-release": "^24.1.0",
+    "semantic-release": "^21.0.0",
     "tsup": "^8.0.1",
     "typescript": "^5.3.3",
     "vitest": "^3.1.3"
