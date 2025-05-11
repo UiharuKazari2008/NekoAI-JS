@@ -5,21 +5,18 @@ const {
   Sampler,
   createCustomHost,
 } = require("nekoai-js");
-require("dotenv").config();
 
 // Test function for custom host
 async function testCustomHost() {
   const client = new NovelAI({
-    token: process.env.NOVELAI_TOKEN,
+    token: process.env.CUSTOM_TOKEN,
   });
 
   console.log("Testing custom host...");
 
   // Create a custom host (this example uses the official API endpoint, but you can use any compatible server)
   const customHost = createCustomHost(
-    "https://api.novelai.net", // URL - replace with your custom host
-    "application/x-zip-compressed", // Accept header
-    "custom-api", // Name for the host (used in filenames)
+    "https://image.novelai.net", // Custom host URL
   );
 
   try {
@@ -51,29 +48,6 @@ async function testCustomHost() {
       }
     } else {
       console.log("No images were generated");
-    }
-
-    // Also test a director tool with custom host
-    console.log("Testing director tool with custom host...");
-
-    try {
-      // Use the web endpoint for director tools (proper custom host would use your own endpoint)
-      const directorHost = createCustomHost(
-        "https://image.novelai.net",
-        "binary/octet-stream",
-        "custom-director",
-      );
-
-      // Try a director tool with the custom host
-      // Note: You'll need an existing image file at this path
-      const lineArtResult = await client.lineArt(
-        "./examples/input/image.png",
-        directorHost,
-      );
-      const savePath = await lineArtResult.save("./examples/output");
-      console.log(`Line art saved to ${savePath}`);
-    } catch (error) {
-      console.error("Error with director tool using custom host:", error);
     }
   } catch (error) {
     console.error("Error generating image with custom host:", error);

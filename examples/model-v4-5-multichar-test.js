@@ -13,12 +13,12 @@ async function testModelV45MultiChar() {
     const images = await client.generateImage(
       {
         prompt: "two people, classroom, school uniform, detailed background",
-        model: Model.V4_5_CUR,
-        resPreset: Resolution.NORMAL_LANDSCAPE,
+        model: "nai-diffusion-4-5-curated",
+        resPreset: "normal_landscape",
         steps: 28,
         scale: 5.5,
-        sampler: Sampler.EULER_ANC,
-        noiseSchedule: Noise.KARRAS,
+        sampler: "k_euler_ancestral",
+        noiseSchedule: "karras",
         negativePrompt:
           "nsfw, lowres, bad anatomy, bad hands, text, error, missing fingers, extra digit",
         // Character prompts for multiple characters
@@ -45,7 +45,9 @@ async function testModelV45MultiChar() {
       console.log(`Generated ${images.length} image(s)`);
       // Save the images to the output directory
       for (const [index, image] of images.entries()) {
-        const path = await image.save("./examples/output/model-v4-5-multichar-test.png");
+        const path = await image.save(
+          "./examples/output/model-v4-5-multichar-test.png",
+        );
         console.log(`Saved image ${index + 1} to ${path}`);
       }
     } else {

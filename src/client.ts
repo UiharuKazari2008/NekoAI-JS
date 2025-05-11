@@ -14,7 +14,6 @@ import {
 } from "./constants";
 import { Image } from "./image";
 import {
-  ChangeEmotionOptions,
   DirectorRequest,
   HostInstance,
   ImageInput,
@@ -599,31 +598,32 @@ export class NovelAI {
   /**
    * Change the emotion of a character in an image
    *
-   * @param options - Options for changing emotion
-   * @param options.image - Image input (path, Blob, File, URL, etc.)
-   * @param options.emotion - Target emotion to change to
-   * @param options.prompt - Additional prompt to add to the request
-   * @param options.emotionLevel - Level of emotion change (0-5, optional)
+   * @param image - Image input (path, Blob, File, URL, etc.)
    * @param host - Host to use for the request (optional)
+   * @param emotion - Target emotion to change to
+   * @param prompt - Additional prompt to add to the request
+   * @param emotionLevel - Level of emotion change (0-5, optional)
    * @returns Promise resolving to an Image object
    */
   async changeEmotion(
-    options: ChangeEmotionOptions,
+    image: ImageInput,
     host?: Host | HostInstance,
-  ): Promise<Image> {
-    const parsedImage = await parseImage(options.image);
+    emotion: string = EmotionOptions.NEUTRAL,
+    prompt: string = "",
+    emotionLevel: EmotionLevel = EmotionLevel.NORMAL,
 
-    // Create the prompt string in the format "originalEmotion;;targetEmotion,"
-    const originalEmotion = options.prompt || EmotionOptions.NEUTRAL;
-    const prompt = `${originalEmotion};;${options.emotion},`;
+  ): Promise<Image> {
+    const parsedImage = await parseImage(image);
+
+    const final_prompt = `${emotion};;${prompt}`;
 
     const request: DirectorRequest = {
       req_type: DirectorTools.EMOTION,
       width: parsedImage.width,
       height: parsedImage.height,
       image: parsedImage.base64,
-      prompt,
-      defry: options.emotionLevel ?? EmotionLevel.NORMAL,
+      prompt: final_prompt,
+      defry: emotionLevel ?? EmotionLevel.NORMAL,
     };
 
     return this.useDirectorTool(request, host);

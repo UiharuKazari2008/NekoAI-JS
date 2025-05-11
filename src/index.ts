@@ -22,7 +22,6 @@ export {
 
 // Export types
 export type {
-  ChangeEmotionOptions,
   CharacterCaption,
   CharacterPrompt,
   CustomHost,

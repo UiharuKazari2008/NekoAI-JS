@@ -35,7 +35,7 @@ export const HOST_INSTANCES: Record<Host, HostInstance> = {
  */
 export function createCustomHost(
   url: string,
-  accept: string,
+  accept: string = "binary/octet-stream",
   name = "custom",
 ): HostInstance {
   return {

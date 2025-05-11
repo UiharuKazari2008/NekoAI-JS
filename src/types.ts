@@ -255,12 +255,6 @@ export type DirectorRequest =
   | ColorizeRequest
   | EmotionRequest;
 
-export interface ChangeEmotionOptions {
-  image: ImageInput;
-  emotion: EmotionOptions | string;
-  prompt?:  string;
-  emotionLevel?: EmotionLevel | number;
-}
 
 export interface NovelAIOptions {
   token: string;

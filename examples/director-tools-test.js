@@ -88,8 +88,8 @@ async function testDirectorTools() {
     try {
       const emotionResult = await client.changeEmotion({
         image: imageInput,
-        emotion: EmotionOptions.HAPPY,
-        prompt: "laughing",
+        emotion: "happy",
+        prompt: "",
         emotionLevel: EmotionLevel.NORMAL,
       });
       const savePath = await emotionResult.save(
