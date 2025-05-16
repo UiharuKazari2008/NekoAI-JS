@@ -50,19 +50,25 @@ export enum Endpoint {
   USERDATA = "/user/data",
   IMAGE = "/ai/generate-image",
   DIRECTOR = "/ai/augment-image",
+  ENCODE_VIBE = "/ai/encode-vibe"
 }
 
 export enum Model {
   // Anime V3
   V3 = "nai-diffusion-3",
-  V3INP = "nai-diffusion-3-inpainting",
+  V3_INP = "nai-diffusion-3-inpainting",
   // Anime V4
   V4 = "nai-diffusion-4-full",
+  V4_INP = "nai-diffusion-4-full-inpainting",
+  // Anime V4 Curated
   V4_CUR = "nai-diffusion-4-curated-preview",
+  V4_CUR_INP = "nai-diffusion-4-curated-inpainting",
+  // Anime V4/5 Curated
   V4_5_CUR = "nai-diffusion-4-5-curated",
+  V4_5_CUR_INP = "nai-diffusion-4-5-curated-inpainting",
   // Furry model beta v1.3
-  FURRY = "nai-diffusion-furry",
-  FURRYINP = "furry-diffusion-inpainting",
+  FURRY = "nai-diffusion-furry-3",
+  FURRY_INP = "nai-diffusion-furry-3-inpainting",
 }
 
 export enum Controlnet {

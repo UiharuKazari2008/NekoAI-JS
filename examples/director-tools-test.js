@@ -73,6 +73,7 @@ async function testDirectorTools() {
     try {
       const colorizeResult = await client.colorize(
         imageInput,
+        undefined,
         "dream, mirror",
         1,
       );
@@ -86,12 +87,13 @@ async function testDirectorTools() {
 
     console.log("Testing Emotion Change...");
     try {
-      const emotionResult = await client.changeEmotion({
-        image: imageInput,
-        emotion: "happy",
-        prompt: "",
-        emotionLevel: EmotionLevel.NORMAL,
-      });
+      const emotionResult = await client.changeEmotion(
+        imageInput,
+        undefined,
+        "happy",
+        "",
+        0,
+      );
       const savePath = await emotionResult.save(
         "./examples/output/emotion-test.png",
       );

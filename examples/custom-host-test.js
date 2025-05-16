@@ -9,7 +9,7 @@ const {
 // Test function for custom host
 async function testCustomHost() {
   const client = new NovelAI({
-    token: process.env.CUSTOM_TOKEN,
+    token: process.env.NOVELAI_TOKEN,
   });
 
   console.log("Testing custom host...");

@@ -319,34 +319,27 @@ export function ensureDirectoryExists(dir: string): void {
 }
 
 /**
- * Deduplicate tags in a comma-separated string
+ * Deduplicate tags in a comma-separated string (case-insensitive)
  * @param prompt - Prompt string with tags separated by commas
  * @returns Deduplicated prompt string
  */
 export function deduplicateTags(prompt: string): string {
   if (!prompt) return prompt;
 
-  // Split by commas, strip whitespace
-  const tags = prompt
-    .split(",")
-    .map((tag) => tag.trim())
-    .filter(Boolean);
+  const seen = new Set<string>();
+  const deduped: string[] = [];
 
-  // Convert to lowercase for case-insensitive comparison
-  // But keep original case for the final output
-  const lowercaseToOriginal: { [key: string]: string } = {};
-
-  for (const tag of tags) {
-    const lowercase = tag.toLowerCase();
-    // If we have multiple versions of the same tag, keep the first one
-    if (!(lowercase in lowercaseToOriginal)) {
-      lowercaseToOriginal[lowercase] = tag;
+  for (const tag of prompt.split(",")) {
+    const trimmed = tag.trim();
+    if (!trimmed) continue;
+    const lower = trimmed.toLowerCase();
+    if (!seen.has(lower)) {
+      seen.add(lower);
+      deduped.push(trimmed);
     }
   }
 
-  // Reconstruct deduplicated prompt with original case
-  const deduplicatedTags = Object.values(lowercaseToOriginal);
-  return deduplicatedTags.join(", ");
+  return deduped.join(", ");
 }
 
 /**
@@ -370,76 +363,61 @@ export function prepareMetadataForApi(metadata: Metadata): any {
 
   // Create formatted parameters object matching NovelAI's expected format
   const formattedParams: Record<string, any> = {};
-
-  // Fields to convert to snake_case based on the NovelAI API expectations
-  // Some fields remain camelCase in the actual API
-  const snakeCaseFields = [
-    "dynamicThresholding",
-    "controlnetStrength",
-    "addOriginalImage",
-    "cfgRescale",
-    "noiseSchedule",
-    "smDyn",
-    "extraNoiseSeed",
-    "skipCfgAboveSigma",
-    "normalizeReferenceStrengthMultiple",
-    "deliberateEulerAncestralBug",
-    "legacyV3Extend",
-    "referenceImageMultiple",
-    "referenceInformationExtractedMultiple",
-    "referenceStrengthMultiple",
-    "controlnetCondition",
-    "controlnetModel",
+  
+  // Fields that should remain in camelCase format
+  const camelCaseFields = [
+    "ucPreset", 
+    "qualityToggle", 
+    "autoSmea", 
+    "characterPrompts",
+    "v4_prompt",
+    "v4_negative_prompt"
   ];
-
-  // Fields to rename (either to snake_case or special naming)
-  const fieldMappings: Record<string, string> = {
-    nSamples: "n_samples",
-    dynamicThresholding: "dynamic_thresholding",
-    controlnetStrength: "controlnet_strength",
-    addOriginalImage: "add_original_image",
-    cfgRescale: "cfg_rescale",
-    noiseSchedule: "noise_schedule",
-    smDyn: "sm_dyn",
-    extraNoiseSeed: "extra_noise_seed",
-    negativePrompt: "negative_prompt",
-    paramsVersion: "params_version",
-    skipCfgAboveSigma: "skip_cfg_above_sigma",
-    useCoords: "use_coords",
-    legacyUc: "legacy_uc",
-    normalizeReferenceStrengthMultiple: "normalize_reference_strength_multiple",
-    deliberateEulerAncestralBug: "deliberate_euler_ancestral_bug",
-    preferBrownian: "prefer_brownian",
-    legacyV3Extend: "legacy_v3_extend",
-    referenceImageMultiple: "reference_image_multiple",
-    referenceInformationExtractedMultiple:
-      "reference_information_extracted_multiple",
-    referenceStrengthMultiple: "reference_strength_multiple",
-    controlnetCondition: "controlnet_condition",
-    controlnetModel: "controlnet_model",
-  };
 
   // Process all parameters
   Object.entries(parameters).forEach(([key, value]) => {
-    // Skip undefined values and v4 specific fields which will be handled separately
-    if (value === undefined || key === "v4Prompt" || key === "v4NegativePrompt")
-      return;
+    try {
+      // Skip undefined values
+      if (value === undefined) return;
 
-    // Use the mapping if available
-    const targetKey = fieldMappings[key] || key;
-    formattedParams[targetKey] = value;
+      // Handle special nested objects
+      if (key === "v4Prompt") {
+        const convertedPrompt = convertV4Prompt(value);
+        if (convertedPrompt) {
+          formattedParams.v4_prompt = convertedPrompt;
+        }
+        return;
+      }
+
+      if (key === "v4NegativePrompt") {
+        const convertedNegPrompt = convertV4NegativePrompt(value);
+        if (convertedNegPrompt) {
+          formattedParams.v4_negative_prompt = convertedNegPrompt;
+        }
+        return;
+      }
+
+      if (key === "characterPrompts" && Array.isArray(value)) {
+        formattedParams.characterPrompts = convertCharacterPrompts(value);
+        return;
+      }
+
+      // Determine if this field should be in camelCase or snake_case
+      const targetKey = camelCaseFields.includes(key) ? key : camelToSnakeCase(key);
+      
+      // Handle nested objects recursively
+      if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
+        formattedParams[targetKey] = convertObjectKeysToSnakeCase(value, camelCaseFields);
+      } else {
+        formattedParams[targetKey] = value;
+      }
+    } catch (error) {
+      console.error(`Error processing metadata field "${key}":`, error);
+      // Still include the value even if conversion failed
+      const targetKey = camelCaseFields.includes(key) ? key : camelToSnakeCase(key);
+      formattedParams[targetKey] = value;
+    }
   });
-
-  // Ensure params_version is set correctly based on model
-  if (
-    model === Model.V4 ||
-    model === Model.V4_CUR ||
-    model === Model.V4_5_CUR
-  ) {
-    formattedParams.params_version = 3;
-  } else {
-    formattedParams.params_version = formattedParams.params_version || 1;
-  }
 
   // Create the payload
   const payload: any = {
@@ -449,72 +427,130 @@ export function prepareMetadataForApi(metadata: Metadata): any {
     parameters: formattedParams,
   };
 
-  // Handle V4/V4.5 specific formats
-  if (
-    model === Model.V4 ||
-    model === Model.V4_CUR ||
-    model === Model.V4_5_CUR
-  ) {
-    // V4 prompt handling
-    if (metadata.v4Prompt) {
-      // Convert character captions to the expected format if they exist
-      const charCaptions =
-        metadata.v4Prompt.caption.charCaptions?.map((cc) => ({
-          char_caption: cc.charCaption,
-          centers: cc.centers,
-        })) || [];
+  return payload;
+}
 
-      payload.parameters.v4_prompt = {
-        caption: {
-          base_caption: metadata.v4Prompt.caption.baseCaption,
-          char_captions: charCaptions,
-        },
-        use_coords: metadata.v4Prompt.useCoords,
-        use_order: metadata.v4Prompt.useOrder,
-      };
+/**
+ * Converts a camelCase string to snake_case
+ * 
+ * @param str - The camelCase string to convert
+ * @returns The string in snake_case format
+ */
+export function camelToSnakeCase(str: string): string {
+  return str.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
+}
+
+/**
+ * Recursively converts all keys in an object from camelCase to snake_case
+ * 
+ * @param obj - The object to convert
+ * @param camelCaseFields - List of fields that should remain in camelCase
+ * @returns A new object with all keys in snake_case
+ */
+export function convertObjectKeysToSnakeCase(
+  obj: Record<string, any>, 
+  camelCaseFields: string[] = []
+): Record<string, any> {
+  const result: Record<string, any> = {};
+
+  Object.entries(obj).forEach(([key, value]) => {
+    // Determine if this key should remain camelCase or convert to snake_case
+    const targetKey = camelCaseFields.includes(key) ? key : camelToSnakeCase(key);
+    
+    if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
+      // Recursively convert nested objects
+      result[targetKey] = convertObjectKeysToSnakeCase(value, camelCaseFields);
+    } else if (Array.isArray(value)) {
+      // Handle arrays by mapping each item (if objects)
+      result[targetKey] = value.map(item => 
+        item !== null && typeof item === 'object' 
+          ? convertObjectKeysToSnakeCase(item, camelCaseFields)
+          : item
+      );
     } else {
-      // Create default v4_prompt from the input prompt
-      payload.parameters.v4_prompt = {
-        caption: {
-          base_caption: metadata.prompt,
-          char_captions: [],
-        },
-        use_coords: parameters.useCoords || false,
-        use_order: true,
-      };
+      // Simple value
+      result[targetKey] = value;
     }
+  });
 
-    // V4 negative prompt handling
-    if (metadata.v4NegativePrompt) {
-      // Convert character captions to the expected format if they exist
-      const charCaptions =
-        metadata.v4NegativePrompt.caption.charCaptions?.map((cc) => ({
-          char_caption: cc.charCaption,
-          centers: cc.centers,
-        })) || [];
+  return result;
+}
 
-      payload.parameters.v4_negative_prompt = {
-        caption: {
-          base_caption: metadata.v4NegativePrompt.caption.baseCaption,
-          char_captions: charCaptions,
-        },
-        legacy_uc: metadata.v4NegativePrompt.legacyUc,
-      };
-    } else if (formattedParams.negative_prompt) {
-      // Create default v4_negative_prompt from the negative prompt
-      payload.parameters.v4_negative_prompt = {
-        caption: {
-          base_caption: formattedParams.negative_prompt,
-          char_captions: [],
-        },
-        legacy_uc: false,
-      };
-    }
+/**
+ * Converts V4Prompt structure to the format expected by the API
+ * 
+ * @param v4Prompt - The V4Prompt object to convert
+ * @returns Converted object in the format expected by the API
+ */
+export function convertV4Prompt(v4Prompt: any): any {
+  if (!v4Prompt) return undefined;
 
-    // For V4 models, both negative_prompt and v4_negative_prompt can coexist per the original payload
+  // Convert the structure according to the expected API format
+  // Special handling for the nested structure
+  const result = {
+    caption: {
+      base_caption: v4Prompt.caption?.baseCaption || "",
+      char_captions: []
+    },
+    use_coords: v4Prompt.useCoords || false,
+    use_order: v4Prompt.useOrder || true
+  };
+
+  // Handle character captions
+  if (v4Prompt.caption?.charCaptions && Array.isArray(v4Prompt.caption.charCaptions)) {
+    result.caption.char_captions = v4Prompt.caption.charCaptions.map((charCaption: any) => ({
+      char_caption: charCaption.charCaption || "",
+      centers: charCaption.centers || []
+    }));
   }
 
-  return payload;
+  return result;
+}
+
+/**
+ * Converts V4NegativePrompt structure to the format expected by the API
+ * 
+ * @param v4NegativePrompt - The V4NegativePrompt object to convert
+ * @returns Converted object in the format expected by the API
+ */
+export function convertV4NegativePrompt(v4NegativePrompt: any): any {
+  if (!v4NegativePrompt) return undefined;
+
+  // Convert the structure according to the expected API format
+  // Special handling for the nested structure
+  const result = {
+    caption: {
+      base_caption: v4NegativePrompt.caption?.baseCaption || "",
+      char_captions: []
+    },
+    legacy_uc: v4NegativePrompt.legacyUc || false
+  };
+
+  // Handle character captions
+  if (v4NegativePrompt.caption?.charCaptions && Array.isArray(v4NegativePrompt.caption.charCaptions)) {
+    result.caption.char_captions = v4NegativePrompt.caption.charCaptions.map((charCaption: any) => ({
+      char_caption: charCaption.charCaption || "",
+      centers: charCaption.centers || []
+    }));
+  }
+
+  return result;
+}
+
+/**
+ * Converts CharacterPrompts array to the format expected by the API
+ * 
+ * @param characterPrompts - The array of CharacterPrompt objects to convert
+ * @returns Converted array in the format expected by the API
+ */
+export function convertCharacterPrompts(characterPrompts: any[]): any[] {
+  if (!characterPrompts || !Array.isArray(characterPrompts)) return [];
+
+  // Character prompts fields that should remain in camelCase
+  const camelCaseFields = ["prompt", "uc", "enabled"];
+
+  // Convert each CharacterPrompt object to snake_case recursively while preserving camelCase fields
+  return characterPrompts.map(prompt => convertObjectKeysToSnakeCase(prompt, camelCaseFields));
 }
 
 /**
@@ -761,11 +797,11 @@ function shouldRetryRequest(
  * @returns Delay in milliseconds
  */
 function calculateRetryDelay(attempt: number, config: Required<RetryConfig>): number {
-  // Exponential backoff: baseDelay * 2^attempt
-  const exponentialDelay = config.baseDelay * Math.pow(2, attempt);
+  // Exponential backoff: baseDelay * 1.2^attempt
+  const exponentialDelay = config.baseDelay * Math.pow(1.2, attempt);
   
   // Add jitter (random value between 0 and 1000ms) to prevent thundering herd
-  const jitter = Math.random() * 1000;
+  const jitter = Math.random() * 300;
   
   // Cap the delay at maxDelay
   return Math.min(exponentialDelay + jitter, config.maxDelay);
