@@ -54,4 +54,6 @@ export {
   base64ToUint8Array,
   uint8ArrayToBase64,
   withRetry,
+  extractImageMetadata,
+  getImageSummary,
 } from "./utils";

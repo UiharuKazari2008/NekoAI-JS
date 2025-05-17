@@ -1,6 +1,5 @@
 import JSZip from "jszip";
 import {
-  Action,
   HEADERS,
   Host,
   HOST_INSTANCES,
@@ -9,8 +8,6 @@ import {
   EmotionOptions,
   EmotionLevel,
   Model,
-  Noise,
-  Sampler,
 } from "./constants";
 import { Image } from "./image";
 import {
@@ -20,15 +17,11 @@ import {
   Metadata,
   NovelAIOptions,
   NovelAIResponse,
-  PositionCoords,
-  CharacterCaption,
-  CharacterPrompt,
   RetryConfig,
 } from "./types";
 import {
   calculateCost,
   createFilename,
-  deduplicateTags,
   handleResponse,
   parseImage,
   prepareMetadataForApi,
@@ -111,11 +104,15 @@ export class NovelAI {
         const response = await this.makeRequest(
           `${hostInstance.url}${Endpoint.IMAGE}`,
           payload,
-          hostInstance.accept
+          hostInstance.accept,
         );
 
         // Process the response into Image objects
-        return this.processImageResponse(response, hostInstance, processedMetadata);
+        return this.processImageResponse(
+          response,
+          hostInstance,
+          processedMetadata,
+        );
       } catch (error) {
         if ((error as any).name === "AbortError") {
           throw new Error(
@@ -129,7 +126,7 @@ export class NovelAI {
 
   /**
    * Makes a request to the NovelAI API with appropriate headers and timeout handling
-   * 
+   *
    * @param url - The endpoint URL to send the request to
    * @param payload - The request payload
    * @param acceptHeader - The Accept header value for the response
@@ -139,12 +136,15 @@ export class NovelAI {
   private async makeRequest(
     url: string,
     payload: any,
-    acceptHeader: string
+    acceptHeader: string,
   ): Promise<NovelAIResponse> {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), this.timeout);
 
     const jsonPayload = JSON.stringify(payload);
+
+    console.log("✨ Sending request to NovelAI API... with:", jsonPayload);
+
     try {
       // Make the API request
       const response = await fetch(url, {
@@ -175,7 +175,7 @@ export class NovelAI {
 
   /**
    * Processes the API response into Image objects
-   * 
+   *
    * @param apiResponse - The API response to process
    * @param hostInstance - The host instance used for the request
    * @param metadata - The metadata to include with the images
@@ -185,7 +185,7 @@ export class NovelAI {
   private async processImageResponse(
     apiResponse: NovelAIResponse,
     hostInstance: HostInstance,
-    metadata: Metadata
+    metadata: Metadata,
   ): Promise<Image[]> {
     // Get host name for filename
     const hostName = hostInstance.name.toLowerCase();
@@ -242,8 +242,6 @@ export class NovelAI {
     return metadataProcessor.processMetadata(metadata);
   }
 
-
-
   /**
    * Use a Director tool with the specified request
    *
@@ -263,7 +261,7 @@ export class NovelAI {
         // Set up AbortController for timeout
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), this.timeout);
-        
+
         try {
           // Make the API request
           const response = await fetch(
@@ -281,7 +279,7 @@ export class NovelAI {
 
           // Handle the response
           const apiResponse = await handleResponse(response);
-          
+
           if (!apiResponse.data) {
             throw new Error("Received empty response from the server.");
           }
@@ -295,10 +293,10 @@ export class NovelAI {
           } else {
             throw new Error("No data received from API");
           }
-          
+
           // Handle decompression of the ZIP file
           const data = await this.handleDirectorDecompression(arrayBuffer);
-          
+
           // Create and return the image
           return new Image({
             filename: createFilename(request.req_type),
@@ -320,41 +318,45 @@ export class NovelAI {
 
   /**
    * Handle decompression of ZIP response from Director API
-   * 
+   *
    * @param compressedData - Compressed ZIP data as ArrayBuffer
    * @returns Promise resolving to decompressed Uint8Array image data
    * @private
    */
-  private async handleDirectorDecompression(compressedData: ArrayBuffer): Promise<Uint8Array> {
+  private async handleDirectorDecompression(
+    compressedData: ArrayBuffer,
+  ): Promise<Uint8Array> {
     try {
       // Load the ZIP file using JSZip
       const zip = await JSZip.loadAsync(compressedData);
-      
+
       // Get the list of files in the ZIP
       const fileNames = Object.keys(zip.files);
-      
+
       if (fileNames.length === 0) {
         throw new Error("ZIP file is empty or invalid");
       }
-      
+
       // Extract the first file (Director tools typically return a single image)
       const firstFileName = fileNames[0];
       const fileData = await zip.file(firstFileName)?.async("uint8array");
-      
+
       if (!fileData) {
         throw new Error(`Failed to extract file ${firstFileName} from ZIP`);
       }
-      
+
       return fileData;
     } catch (error) {
       // If not a valid ZIP or only contains a single uncompressed image,
       // return the raw data as-is
-      if (error instanceof Error && 
-          (error.message.includes("invalid zip") || 
-           error.message.includes("Central Directory header not found"))) {
+      if (
+        error instanceof Error &&
+        (error.message.includes("invalid zip") ||
+          error.message.includes("Central Directory header not found"))
+      ) {
         return new Uint8Array(compressedData);
       }
-      
+
       // Re-throw other errors
       throw error;
     }
@@ -491,7 +493,6 @@ export class NovelAI {
     emotion: string = EmotionOptions.NEUTRAL,
     prompt: string = "",
     emotionLevel: EmotionLevel = EmotionLevel.NORMAL,
-
   ): Promise<Image> {
     const parsedImage = await parseImage(image);
 
@@ -512,7 +513,7 @@ export class NovelAI {
   /**
    * Encode images to vibe tokens using the /encode-vibe endpoint
    * Uses caching to avoid unnecessary API calls for previously processed images
-   * 
+   *
    * @param metadata - Metadata object to update with vibe tokens
    * @returns Promise resolving when encoding is complete
    * @private
@@ -525,7 +526,10 @@ export class NovelAI {
     }
 
     // Skip if no reference images
-    if (!metadata.referenceImageMultiple || metadata.referenceImageMultiple.length === 0) {
+    if (
+      !metadata.referenceImageMultiple ||
+      metadata.referenceImageMultiple.length === 0
+    ) {
       return;
     }
 
@@ -534,18 +538,19 @@ export class NovelAI {
     // Process each reference image
     for (let i = 0; i < metadata.referenceImageMultiple.length; i++) {
       const refImage = metadata.referenceImageMultiple[i];
-      
-      const refInfoExtracted = metadata.referenceInformationExtractedMultiple && 
-                              metadata.referenceInformationExtractedMultiple[i] !== undefined
-        ? metadata.referenceInformationExtractedMultiple[i] 
-        : 1.0;
-      
+
+      const refInfoExtracted =
+        metadata.referenceInformationExtractedMultiple &&
+        metadata.referenceInformationExtractedMultiple[i] !== undefined
+          ? metadata.referenceInformationExtractedMultiple[i]
+          : 1.0;
+
       // Create a unique hash from the image data for caching
       const imageHash = await this.getImageHash(refImage);
       const cacheKey = `${imageHash}:${refInfoExtracted}:${metadata.model}`;
-      
+
       let vibeToken: string;
-      
+
       // Check if we have this image in cache
       if (this.vibeCache.has(cacheKey)) {
         vibeToken = this.vibeCache.get(cacheKey)!;
@@ -554,20 +559,20 @@ export class NovelAI {
         const payload = {
           image: refImage,
           information_extracted: refInfoExtracted,
-          model: metadata.model
+          model: metadata.model,
         };
-        
+
         // Use the web host for vibe encoding
         const hostInstance = HOST_INSTANCES[Host.WEB];
-        
+
         try {
           // Make the API request using our central request method
           const response = await this.makeRequest(
             `${hostInstance.url}${Endpoint.ENCODE_VIBE}`,
             payload,
-            hostInstance.accept
+            hostInstance.accept,
           );
-          
+
           // Convert response to string
           let vibeData: string;
           if (response.data instanceof ArrayBuffer) {
@@ -578,34 +583,34 @@ export class NovelAI {
           } else {
             throw new Error("No vibe token data received from API");
           }
-          
+
           // Cache the vibe token
           vibeToken = vibeData;
           this.vibeCache.set(cacheKey, vibeToken);
         } catch (error) {
           if ((error as any).name === "AbortError") {
             throw new Error(
-              "Vibe encoding request timed out. If the problem persists, consider setting a higher 'timeout' value."
+              "Vibe encoding request timed out. If the problem persists, consider setting a higher 'timeout' value.",
             );
           }
           throw error;
         }
       }
-      
+
       // Add both the original image and its vibe token
       referenceImageMultiple.push(vibeToken);
     }
-    
+
     // Update metadata with both reference images and their vibe tokens
     metadata.referenceImageMultiple = [...referenceImageMultiple];
-    
+
     // Clean up legacy fields
     metadata.referenceInformationExtractedMultiple = undefined;
   }
 
   /**
    * Create a hash for an image to use as a cache key
-   * 
+   *
    * @param base64Image - Base64 encoded image data
    * @returns Promise resolving to a hash string
    * @private
@@ -614,13 +619,13 @@ export class NovelAI {
     // Handle Node.js environment
     if (typeof window === "undefined") {
       try {
-        const crypto = require('crypto');
-        const imageBytes = Buffer.from(base64Image, 'base64');
-        return crypto.createHash('sha256').update(imageBytes).digest('hex');
+        const crypto = require("crypto");
+        const imageBytes = Buffer.from(base64Image, "base64");
+        return crypto.createHash("sha256").update(imageBytes).digest("hex");
       } catch (e) {
         throw new Error("Failed to hash image: " + e);
       }
-    } 
+    }
     // Handle browser environment
     else {
       try {
@@ -629,10 +634,10 @@ export class NovelAI {
         for (let i = 0; i < imageBytes.length; i++) {
           uint8Array[i] = imageBytes.charCodeAt(i);
         }
-        
-        const hashBuffer = await crypto.subtle.digest('SHA-256', uint8Array);
+
+        const hashBuffer = await crypto.subtle.digest("SHA-256", uint8Array);
         const hashArray = Array.from(new Uint8Array(hashBuffer));
-        return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+        return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
       } catch (e) {
         throw new Error("Failed to hash image: " + e);
       }

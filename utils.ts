@@ -1,5 +1,11 @@
-import { ImageInput, Metadata, NovelAIResponse, ParsedImage, RetryConfig } from "./types";
-import { Action, Model, Sampler } from "./constants";
+import {
+  ImageInput,
+  Metadata,
+  NovelAIResponse,
+  ParsedImage,
+  RetryConfig,
+} from "./src/types";
+import { Action, Model, Sampler } from "./src/constants";
 
 // Define types for Node.js modules to be used conditionally
 type FSModule = typeof import("fs");
@@ -11,7 +17,7 @@ function getNodeModules(): { fs: FSModule | null; path: PathModule | null } {
     // Node.js environment
     return {
       fs: require("fs"),
-      path: require("path")
+      path: require("path"),
     };
   }
   // Browser environment
@@ -94,13 +100,15 @@ export async function parseImage(input: ImageInput): Promise<ParsedImage> {
       if (!fs) {
         throw new Error("File system module not available");
       }
-      
+
       // Load the canvas module (Node.js only)
       const canvas = loadNodeCanvas();
       if (!canvas) {
-        throw new Error("Canvas module not available. Please install it with: npm install canvas");
+        throw new Error(
+          "Canvas module not available. Please install it with: npm install canvas",
+        );
       }
-      
+
       const { createCanvas, loadImage } = canvas;
 
       try {
@@ -134,9 +142,11 @@ export async function parseImage(input: ImageInput): Promise<ParsedImage> {
       // Load the canvas module (Node.js only)
       const canvas = loadNodeCanvas();
       if (!canvas) {
-        throw new Error("Canvas module not available. Please install it with: npm install canvas");
+        throw new Error(
+          "Canvas module not available. Please install it with: npm install canvas",
+        );
       }
-      
+
       const { createCanvas, loadImage } = canvas;
       const tempBuffer = Buffer.from(input);
 
@@ -363,15 +373,15 @@ export function prepareMetadataForApi(metadata: Metadata): any {
 
   // Create formatted parameters object matching NovelAI's expected format
   const formattedParams: Record<string, any> = {};
-  
+
   // Fields that should remain in camelCase format
   const camelCaseFields = [
-    "ucPreset", 
-    "qualityToggle", 
-    "autoSmea", 
+    "ucPreset",
+    "qualityToggle",
+    "autoSmea",
     "characterPrompts",
     "v4_prompt",
-    "v4_negative_prompt"
+    "v4_negative_prompt",
   ];
 
   // Process all parameters
@@ -403,18 +413,29 @@ export function prepareMetadataForApi(metadata: Metadata): any {
       }
 
       // Determine if this field should be in camelCase or snake_case
-      const targetKey = camelCaseFields.includes(key) ? key : camelToSnakeCase(key);
-      
+      const targetKey = camelCaseFields.includes(key)
+        ? key
+        : camelToSnakeCase(key);
+
       // Handle nested objects recursively
-      if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
-        formattedParams[targetKey] = convertObjectKeysToSnakeCase(value, camelCaseFields);
+      if (
+        value !== null &&
+        typeof value === "object" &&
+        !Array.isArray(value)
+      ) {
+        formattedParams[targetKey] = convertObjectKeysToSnakeCase(
+          value,
+          camelCaseFields,
+        );
       } else {
         formattedParams[targetKey] = value;
       }
     } catch (error) {
       console.error(`Error processing metadata field "${key}":`, error);
       // Still include the value even if conversion failed
-      const targetKey = camelCaseFields.includes(key) ? key : camelToSnakeCase(key);
+      const targetKey = camelCaseFields.includes(key)
+        ? key
+        : camelToSnakeCase(key);
       formattedParams[targetKey] = value;
     }
   });
@@ -432,40 +453,42 @@ export function prepareMetadataForApi(metadata: Metadata): any {
 
 /**
  * Converts a camelCase string to snake_case
- * 
+ *
  * @param str - The camelCase string to convert
  * @returns The string in snake_case format
  */
 export function camelToSnakeCase(str: string): string {
-  return str.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
+  return str.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`);
 }
 
 /**
  * Recursively converts all keys in an object from camelCase to snake_case
- * 
+ *
  * @param obj - The object to convert
  * @param camelCaseFields - List of fields that should remain in camelCase
  * @returns A new object with all keys in snake_case
  */
 export function convertObjectKeysToSnakeCase(
-  obj: Record<string, any>, 
-  camelCaseFields: string[] = []
+  obj: Record<string, any>,
+  camelCaseFields: string[] = [],
 ): Record<string, any> {
   const result: Record<string, any> = {};
 
   Object.entries(obj).forEach(([key, value]) => {
     // Determine if this key should remain camelCase or convert to snake_case
-    const targetKey = camelCaseFields.includes(key) ? key : camelToSnakeCase(key);
-    
-    if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
+    const targetKey = camelCaseFields.includes(key)
+      ? key
+      : camelToSnakeCase(key);
+
+    if (value !== null && typeof value === "object" && !Array.isArray(value)) {
       // Recursively convert nested objects
       result[targetKey] = convertObjectKeysToSnakeCase(value, camelCaseFields);
     } else if (Array.isArray(value)) {
       // Handle arrays by mapping each item (if objects)
-      result[targetKey] = value.map(item => 
-        item !== null && typeof item === 'object' 
+      result[targetKey] = value.map((item) =>
+        item !== null && typeof item === "object"
           ? convertObjectKeysToSnakeCase(item, camelCaseFields)
-          : item
+          : item,
       );
     } else {
       // Simple value
@@ -478,7 +501,7 @@ export function convertObjectKeysToSnakeCase(
 
 /**
  * Converts V4Prompt structure to the format expected by the API
- * 
+ *
  * @param v4Prompt - The V4Prompt object to convert
  * @returns Converted object in the format expected by the API
  */
@@ -490,18 +513,23 @@ export function convertV4Prompt(v4Prompt: any): any {
   const result = {
     caption: {
       base_caption: v4Prompt.caption?.baseCaption || "",
-      char_captions: []
+      char_captions: [],
     },
     use_coords: v4Prompt.useCoords || false,
-    use_order: v4Prompt.useOrder || true
+    use_order: v4Prompt.useOrder || true,
   };
 
   // Handle character captions
-  if (v4Prompt.caption?.charCaptions && Array.isArray(v4Prompt.caption.charCaptions)) {
-    result.caption.char_captions = v4Prompt.caption.charCaptions.map((charCaption: any) => ({
-      char_caption: charCaption.charCaption || "",
-      centers: charCaption.centers || []
-    }));
+  if (
+    v4Prompt.caption?.charCaptions &&
+    Array.isArray(v4Prompt.caption.charCaptions)
+  ) {
+    result.caption.char_captions = v4Prompt.caption.charCaptions.map(
+      (charCaption: any) => ({
+        char_caption: charCaption.charCaption || "",
+        centers: charCaption.centers || [],
+      }),
+    );
   }
 
   return result;
@@ -509,7 +537,7 @@ export function convertV4Prompt(v4Prompt: any): any {
 
 /**
  * Converts V4NegativePrompt structure to the format expected by the API
- * 
+ *
  * @param v4NegativePrompt - The V4NegativePrompt object to convert
  * @returns Converted object in the format expected by the API
  */
@@ -521,17 +549,22 @@ export function convertV4NegativePrompt(v4NegativePrompt: any): any {
   const result = {
     caption: {
       base_caption: v4NegativePrompt.caption?.baseCaption || "",
-      char_captions: []
+      char_captions: [],
     },
-    legacy_uc: v4NegativePrompt.legacyUc || false
+    legacy_uc: v4NegativePrompt.legacyUc || false,
   };
 
   // Handle character captions
-  if (v4NegativePrompt.caption?.charCaptions && Array.isArray(v4NegativePrompt.caption.charCaptions)) {
-    result.caption.char_captions = v4NegativePrompt.caption.charCaptions.map((charCaption: any) => ({
-      char_caption: charCaption.charCaption || "",
-      centers: charCaption.centers || []
-    }));
+  if (
+    v4NegativePrompt.caption?.charCaptions &&
+    Array.isArray(v4NegativePrompt.caption.charCaptions)
+  ) {
+    result.caption.char_captions = v4NegativePrompt.caption.charCaptions.map(
+      (charCaption: any) => ({
+        char_caption: charCaption.charCaption || "",
+        centers: charCaption.centers || [],
+      }),
+    );
   }
 
   return result;
@@ -539,7 +572,7 @@ export function convertV4NegativePrompt(v4NegativePrompt: any): any {
 
 /**
  * Converts CharacterPrompts array to the format expected by the API
- * 
+ *
  * @param characterPrompts - The array of CharacterPrompt objects to convert
  * @returns Converted array in the format expected by the API
  */
@@ -550,7 +583,9 @@ export function convertCharacterPrompts(characterPrompts: any[]): any[] {
   const camelCaseFields = ["prompt", "uc", "enabled"];
 
   // Convert each CharacterPrompt object to snake_case recursively while preserving camelCase fields
-  return characterPrompts.map(prompt => convertObjectKeysToSnakeCase(prompt, camelCaseFields));
+  return characterPrompts.map((prompt) =>
+    convertObjectKeysToSnakeCase(prompt, camelCaseFields),
+  );
 }
 
 /**
@@ -664,7 +699,7 @@ export function saveBinaryFile(data: Uint8Array, filepath: string): void {
     if (!fs || !path) {
       throw new Error("File system modules not available");
     }
-    
+
     const dir = path.dirname(filepath);
     ensureDirectoryExists(dir);
     fs.writeFileSync(filepath, Buffer.from(data));
@@ -696,24 +731,24 @@ export const DEFAULT_RETRY_CONFIG: Required<RetryConfig> = {
   maxRetries: 3,
   baseDelay: 1000, // 1 second
   maxDelay: 30000, // 30 seconds
-  retryStatusCodes: [429]
+  retryStatusCodes: [429],
 };
 
 /**
  * Execute a function with retry logic
- * 
+ *
  * @param fn - Async function to execute with retry logic
  * @param retryConfig - Configuration for retry behavior
  * @returns Promise that resolves with the result of the function
  */
 export async function withRetry<T>(
   fn: () => Promise<T>,
-  retryConfig?: RetryConfig
+  retryConfig?: RetryConfig,
 ): Promise<T> {
   // Use default retry config if not provided
   const config: Required<RetryConfig> = {
     ...DEFAULT_RETRY_CONFIG,
-    ...(retryConfig || {})
+    ...(retryConfig || {}),
   };
 
   // If retries are disabled, just execute the function once
@@ -722,7 +757,7 @@ export async function withRetry<T>(
   }
 
   let lastError: Error | null = null;
-  
+
   // Try up to maxRetries times
   for (let attempt = 0; attempt <= config.maxRetries; attempt++) {
     try {
@@ -730,32 +765,34 @@ export async function withRetry<T>(
       return await fn();
     } catch (error) {
       lastError = error as Error;
-      
+
       // Check if we should retry based on the error
       const shouldRetry = shouldRetryRequest(error, config, attempt);
-      
+
       // If we shouldn't retry or we've reached the max retries, throw the error
       if (!shouldRetry || attempt >= config.maxRetries) {
         throw error;
       }
-      
+
       // Calculate delay with exponential backoff with jitter
       const delay = calculateRetryDelay(attempt, config);
-      
-      console.warn(`Request failed with error: ${lastError.message}. Retrying in ${delay}ms... (Attempt ${attempt + 1}/${config.maxRetries})`);
-      
+
+      console.warn(
+        `Request failed with error: ${lastError.message}. Retrying in ${delay}ms... (Attempt ${attempt + 1}/${config.maxRetries})`,
+      );
+
       // Wait before retrying
-      await new Promise(resolve => setTimeout(resolve, delay));
+      await new Promise((resolve) => setTimeout(resolve, delay));
     }
   }
-  
+
   // This should never happen (we should always either return or throw)
   throw lastError || new Error("Failed after retries");
 }
 
 /**
  * Determine if a request should be retried based on the error and config
- * 
+ *
  * @param error - The error from the request
  * @param config - Retry configuration
  * @param attempt - Current attempt number (0-based)
@@ -764,45 +801,48 @@ export async function withRetry<T>(
 function shouldRetryRequest(
   error: any,
   config: Required<RetryConfig>,
-  attempt: number
+  attempt: number,
 ): boolean {
   // Don't retry if we've reached the max retries
   if (attempt >= config.maxRetries) {
     return false;
   }
-  
+
   // Check for rate limiting (HTTP 429 status)
   if (error && error.status && config.retryStatusCodes.includes(error.status)) {
     return true;
   }
-  
+
   // Check for network errors (fetch will throw a TypeError for network errors)
-  if (error instanceof TypeError && error.message.includes('fetch')) {
+  if (error instanceof TypeError && error.message.includes("fetch")) {
     return true;
   }
-  
+
   // Check for timeout errors
-  if (error.name === 'AbortError') {
+  if (error.name === "AbortError") {
     return true;
   }
-  
+
   return false;
 }
 
 /**
  * Calculate retry delay with exponential backoff and jitter
- * 
+ *
  * @param attempt - Current attempt number (0-based)
  * @param config - Retry configuration
  * @returns Delay in milliseconds
  */
-function calculateRetryDelay(attempt: number, config: Required<RetryConfig>): number {
+function calculateRetryDelay(
+  attempt: number,
+  config: Required<RetryConfig>,
+): number {
   // Exponential backoff: baseDelay * 1.2^attempt
   const exponentialDelay = config.baseDelay * Math.pow(1.2, attempt);
-  
+
   // Add jitter (random value between 0 and 1000ms) to prevent thundering herd
   const jitter = Math.random() * 300;
-  
+
   // Cap the delay at maxDelay
   return Math.min(exponentialDelay + jitter, config.maxDelay);
 }

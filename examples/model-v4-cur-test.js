@@ -32,7 +32,9 @@ async function testModelV4() {
       console.log(`Generated ${images.length} image(s)`);
       // Save the images to the output directory
       for (const [index, image] of images.entries()) {
-        const path = await image.save("./examples/output/model-v4-cur-test.png");
+        const path = await image.save(
+          "./examples/output/model-v4-cur-test.png",
+        );
         console.log(`Saved image ${index + 1} to ${path}`);
       }
     } else {

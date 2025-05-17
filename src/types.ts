@@ -33,26 +33,26 @@ export interface RetryConfig {
    * @default true
    */
   enabled?: boolean;
-  
+
   /**
    * Maximum number of retry attempts
    * @default 3
    */
   maxRetries?: number;
-  
+
   /**
    * Base delay between retries in milliseconds
    * Will be used with exponential backoff
    * @default 1000 (1 second)
    */
   baseDelay?: number;
-  
+
   /**
    * Maximum delay between retries in milliseconds
    * @default 30000 (30 seconds)
    */
   maxDelay?: number;
-  
+
   /**
    * HTTP status codes that should trigger a retry
    * By default, retries on rate limits (429) and server errors (500-599)
@@ -254,7 +254,6 @@ export type DirectorRequest =
   | DeclutterRequest
   | ColorizeRequest
   | EmotionRequest;
-
 
 export interface NovelAIOptions {
   token: string;

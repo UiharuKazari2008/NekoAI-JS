@@ -31,6 +31,7 @@
 | 🔄 **TypeScript Support**   | Full TypeScript definitions for all API parameters and responses.                                      |
 | 🖼️ **Flexible Image Input** | Accepts various image input formats (paths, URLs, Blob, File, ArrayBuffer) for cross-platform use.     |
 | 🔁 **Automatic Retries**    | Built-in retry mechanism for handling rate limits and temporary API failures.                          |
+| 📦 **Modular Structure**    | Well-organized, domain-specific modules for better maintainability and code organization.              |
 
 ## 📦 Installation
 
@@ -339,6 +340,7 @@ const lineArtResult = await client.lineArt("./input/image.png", customHost);
 ```
 
 You can use custom hosts for:
+
 1. Connection to third-party API providers
 2. Working with proxies
 3. Connecting to local NovelAI servers
@@ -355,21 +357,21 @@ import { NovelAI, Model } from "nekoai-js";
 const client = new NovelAI({
   token: "your_access_token",
   retry: {
-    enabled: true,            // Enable retries
-    maxRetries: 5,            // Maximum 5 retry attempts
-    baseDelay: 2000,          // Start with 2 second delay
-    maxDelay: 60000,          // Maximum delay of 1 minute
-    retryStatusCodes: [429]   // Only retry on rate limit errors
-  }
+    enabled: true, // Enable retries
+    maxRetries: 5, // Maximum 5 retry attempts
+    baseDelay: 2000, // Start with 2 second delay
+    maxDelay: 60000, // Maximum delay of 1 minute
+    retryStatusCodes: [429], // Only retry on rate limit errors
+  },
 });
 
 // Generate image with retry
 try {
   const images = await client.generateImage({
     prompt: "1girl, cute, anime style",
-    model: Model.V4_5_CUR
+    model: Model.V4_5_CUR,
   });
-  
+
   console.log("Success after potential retries!");
 } catch (error) {
   console.error("Failed even after retries:", error);
@@ -382,8 +384,8 @@ You can also disable retries completely if needed:
 const client = new NovelAI({
   token: "your_access_token",
   retry: {
-    enabled: false  // Disable retries
-  }
+    enabled: false, // Disable retries
+  },
 });
 ```
 

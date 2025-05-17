@@ -1,4 +1,4 @@
-const { NovelAI, EmotionOptions, EmotionLevel } = require("nekoai-js");
+const { NovelAI } = require("nekoai-js");
 const fs = require("fs");
 require("dotenv").config();
 

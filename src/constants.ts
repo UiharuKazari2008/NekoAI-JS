@@ -50,7 +50,7 @@ export enum Endpoint {
   USERDATA = "/user/data",
   IMAGE = "/ai/generate-image",
   DIRECTOR = "/ai/augment-image",
-  ENCODE_VIBE = "/ai/encode-vibe"
+  ENCODE_VIBE = "/ai/encode-vibe",
 }
 
 export enum Model {

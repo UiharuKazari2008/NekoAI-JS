@@ -1,13 +1,5 @@
-import {
-  Action,
-  Model,
-  Sampler,
-  Noise,
-} from "./constants";
-import {
-  Metadata,
-  CharacterCaption,
-} from "./types";
+import { Action, Model, Sampler, Noise } from "./constants";
+import { Metadata, CharacterCaption } from "./types";
 import { deduplicateTags } from "./utils";
 
 /**
@@ -34,10 +26,12 @@ export class MetadataProcessor {
     this.applyDefaultValues(result);
     this.handleUcPreset(result);
     this.handleQualityTags(result);
-    
+
     // Deduplicate tags
     result.prompt = result.prompt ? deduplicateTags(result.prompt) : "";
-    result.negativePrompt = result.negativePrompt ? deduplicateTags(result.negativePrompt) : "";
+    result.negativePrompt = result.negativePrompt
+      ? deduplicateTags(result.negativePrompt)
+      : "";
 
     // Handle img2img and inpaint specific parameters
     this.handleActionSpecificParameters(result);
@@ -59,7 +53,7 @@ export class MetadataProcessor {
 
   /**
    * Apply default values to metadata
-   * 
+   *
    * @param metadata - Metadata to update
    * @private
    */
@@ -87,12 +81,15 @@ export class MetadataProcessor {
 
   /**
    * Handle action-specific parameters (img2img and inpaint)
-   * 
+   *
    * @param metadata - Metadata to update
    * @private
    */
   private handleActionSpecificParameters(metadata: Metadata): void {
-    if (metadata.action === Action.IMG2IMG || metadata.action === Action.INPAINT) {
+    if (
+      metadata.action === Action.IMG2IMG ||
+      metadata.action === Action.INPAINT
+    ) {
       metadata.sm = false;
       metadata.smDyn = false;
       metadata.strength = metadata.strength || 0.3;
@@ -104,18 +101,18 @@ export class MetadataProcessor {
 
   /**
    * Handle model-specific settings
-   * 
+   *
    * @param metadata - Metadata to update
    * @private
    */
   private handleModelSpecificSettings(metadata: Metadata): void {
     const v4Models = [
-      Model.V4, 
-      Model.V4_INP, 
-      Model.V4_CUR, 
-      Model.V4_CUR_INP, 
-      Model.V4_5_CUR, 
-      Model.V4_5_CUR_INP
+      Model.V4,
+      Model.V4_INP,
+      Model.V4_CUR,
+      Model.V4_CUR_INP,
+      Model.V4_5_CUR,
+      Model.V4_5_CUR_INP,
     ];
 
     // Drop sm and sm_dyn for V4+ models
@@ -127,7 +124,7 @@ export class MetadataProcessor {
 
   /**
    * Handle sampler-specific settings
-   * 
+   *
    * @param metadata - Metadata to update
    * @private
    */
@@ -141,7 +138,7 @@ export class MetadataProcessor {
   /**
    * Handle quality tags based on the model
    * If qualityToggle is true, append quality tags to the prompt
-   * 
+   *
    * @param metadata - Metadata to update
    * @private
    */
@@ -152,15 +149,27 @@ export class MetadataProcessor {
 
     let qualityTags = "";
 
-    if (metadata.model === Model.V4_5_CUR || metadata.model === Model.V4_5_CUR_INP) {
-      qualityTags = ", location, masterpiece, no text, -0.8::feet::, rating:general";
+    if (
+      metadata.model === Model.V4_5_CUR ||
+      metadata.model === Model.V4_5_CUR_INP
+    ) {
+      qualityTags =
+        ", location, masterpiece, no text, -0.8::feet::, rating:general";
     } else if (metadata.model === Model.V4 || metadata.model === Model.V4_INP) {
       qualityTags = ", no text, best quality, very aesthetic, absurdres";
-    } else if (metadata.model === Model.V4_CUR || metadata.model === Model.V4_CUR_INP) {
-      qualityTags = ", rating:general, amazing quality, very aesthetic, absurdres";
+    } else if (
+      metadata.model === Model.V4_CUR ||
+      metadata.model === Model.V4_CUR_INP
+    ) {
+      qualityTags =
+        ", rating:general, amazing quality, very aesthetic, absurdres";
     } else if (metadata.model === Model.V3 || metadata.model === Model.V3_INP) {
-      qualityTags = ", best quality, amazing quality, very aesthetic, absurdres";
-    } else if (metadata.model === Model.FURRY || metadata.model === Model.FURRY_INP) {
+      qualityTags =
+        ", best quality, amazing quality, very aesthetic, absurdres";
+    } else if (
+      metadata.model === Model.FURRY ||
+      metadata.model === Model.FURRY_INP
+    ) {
       qualityTags = ", {best quality}, {amazing quality}";
     }
 
@@ -170,46 +179,67 @@ export class MetadataProcessor {
   /**
    * Handle UC preset based on model
    * Appends model-specific negative prompt tags based on the ucPreset value
-   * 
+   *
    * @param metadata - Metadata to update
    * @private
    */
   handleUcPreset(metadata: Metadata): void {
     let uc = "";
 
-    if (metadata.model === Model.V4_5_CUR || metadata.model === Model.V4_5_CUR_INP) {
+    if (
+      metadata.model === Model.V4_5_CUR ||
+      metadata.model === Model.V4_5_CUR_INP
+    ) {
       if (metadata.ucPreset === 0) {
-        uc = ", blurry, lowres, upscaled, artistic error, film grain, scan artifacts, worst quality, bad quality, jpeg artifacts, very displeasing, chromatic aberration, halftone, multiple views, logo, too many watermarks, negative space, blank page";
+        uc =
+          ", blurry, lowres, upscaled, artistic error, film grain, scan artifacts, worst quality, bad quality, jpeg artifacts, very displeasing, chromatic aberration, halftone, multiple views, logo, too many watermarks, negative space, blank page";
       } else if (metadata.ucPreset === 1) {
-        uc = ", blurry, lowres, upscaled, artistic error, scan artifacts, jpeg artifacts, logo, too many watermarks, negative space, blank page";
+        uc =
+          ", blurry, lowres, upscaled, artistic error, scan artifacts, jpeg artifacts, logo, too many watermarks, negative space, blank page";
       } else if (metadata.ucPreset === 2) {
-        uc = ", blurry, lowres, upscaled, artistic error, film grain, scan artifacts, bad anatomy, bad hands, worst quality, bad quality, jpeg artifacts, very displeasing, chromatic aberration, halftone, multiple views, logo, too many watermarks, @_@, mismatched pupils, glowing eyes, negative space, blank page";
+        uc =
+          ", blurry, lowres, upscaled, artistic error, film grain, scan artifacts, bad anatomy, bad hands, worst quality, bad quality, jpeg artifacts, very displeasing, chromatic aberration, halftone, multiple views, logo, too many watermarks, @_@, mismatched pupils, glowing eyes, negative space, blank page";
       }
     } else if (metadata.model === Model.V4 || metadata.model === Model.V4_INP) {
       if (metadata.ucPreset === 0) {
-        uc = ", blurry, lowres, error, film grain, scan artifacts, worst quality, bad quality, jpeg artifacts, very displeasing, chromatic aberration, multiple views, logo, too many watermarks";
+        uc =
+          ", blurry, lowres, error, film grain, scan artifacts, worst quality, bad quality, jpeg artifacts, very displeasing, chromatic aberration, multiple views, logo, too many watermarks";
       } else if (metadata.ucPreset === 1) {
-        uc = ", blurry, lowres, error, worst quality, bad quality, jpeg artifacts, very displeasing";
+        uc =
+          ", blurry, lowres, error, worst quality, bad quality, jpeg artifacts, very displeasing";
       }
-    } else if (metadata.model === Model.V4_CUR || metadata.model === Model.V4_CUR_INP) {
+    } else if (
+      metadata.model === Model.V4_CUR ||
+      metadata.model === Model.V4_CUR_INP
+    ) {
       if (metadata.ucPreset === 0) {
-        uc = ", blurry, lowres, error, film grain, scan artifacts, worst quality, bad quality, jpeg artifacts, very displeasing, chromatic aberration, logo, dated, signature, multiple views, gigantic breasts";
+        uc =
+          ", blurry, lowres, error, film grain, scan artifacts, worst quality, bad quality, jpeg artifacts, very displeasing, chromatic aberration, logo, dated, signature, multiple views, gigantic breasts";
       } else if (metadata.ucPreset === 1) {
-        uc = ", blurry, lowres, error, worst quality, bad quality, jpeg artifacts, very displeasing, logo, dated, signature";
+        uc =
+          ", blurry, lowres, error, worst quality, bad quality, jpeg artifacts, very displeasing, logo, dated, signature";
       }
     } else if (metadata.model === Model.V3 || metadata.model === Model.V3_INP) {
       if (metadata.ucPreset === 0) {
-        uc = ", lowres, {bad}, error, fewer, extra, missing, worst quality, jpeg artifacts, bad quality, watermark, unfinished, displeasing, chromatic aberration, signature, extra digits, artistic error, username, scan, [abstract],";
+        uc =
+          ", lowres, {bad}, error, fewer, extra, missing, worst quality, jpeg artifacts, bad quality, watermark, unfinished, displeasing, chromatic aberration, signature, extra digits, artistic error, username, scan, [abstract],";
       } else if (metadata.ucPreset === 1) {
-        uc = ", lowres, jpeg artifacts, worst quality, watermark, blurry, very displeasing,";
+        uc =
+          ", lowres, jpeg artifacts, worst quality, watermark, blurry, very displeasing,";
       } else if (metadata.ucPreset === 2) {
-        uc = ", lowres, {bad}, error, fewer, extra, missing, worst quality, jpeg artifacts, bad quality, watermark, unfinished, displeasing, chromatic aberration, signature, extra digits, artistic error, username, scan, [abstract], bad anatomy, bad hands, @_@, mismatched pupils, heart-shaped pupils, glowing eyes,";
+        uc =
+          ", lowres, {bad}, error, fewer, extra, missing, worst quality, jpeg artifacts, bad quality, watermark, unfinished, displeasing, chromatic aberration, signature, extra digits, artistic error, username, scan, [abstract], bad anatomy, bad hands, @_@, mismatched pupils, heart-shaped pupils, glowing eyes,";
       }
-    } else if (metadata.model === Model.FURRY || metadata.model === Model.FURRY_INP) {
+    } else if (
+      metadata.model === Model.FURRY ||
+      metadata.model === Model.FURRY_INP
+    ) {
       if (metadata.ucPreset === 0) {
-        uc = ", {{worst quality}}, [displeasing], {unusual pupils}, guide lines, {{unfinished}}, {bad}, url, artist name, {{tall image}}, mosaic, {sketch page}, comic panel, impact (font), [dated], {logo}, ych, {what}, {where is your god now}, {distorted text}, repeated text, {floating head}, {1994}, {widescreen}, absolutely everyone, sequence, {compression artifacts}, hard translated, {cropped}, {commissioner name}, unknown text, high contrast,";
+        uc =
+          ", {{worst quality}}, [displeasing], {unusual pupils}, guide lines, {{unfinished}}, {bad}, url, artist name, {{tall image}}, mosaic, {sketch page}, comic panel, impact (font), [dated], {logo}, ych, {what}, {where is your god now}, {distorted text}, repeated text, {floating head}, {1994}, {widescreen}, absolutely everyone, sequence, {compression artifacts}, hard translated, {cropped}, {commissioner name}, unknown text, high contrast,";
       } else if (metadata.ucPreset === 1) {
-        uc = ", {worst quality}, guide lines, unfinished, bad, url, tall image, widescreen, compression artifacts, unknown text,";
+        uc =
+          ", {worst quality}, guide lines, unfinished, bad, url, tall image, widescreen, compression artifacts, unknown text,";
       }
     }
 
@@ -218,7 +248,7 @@ export class MetadataProcessor {
 
   /**
    * Determine if coordinates should be used based on character prompt positions
-   * 
+   *
    * @param metadata - Metadata to update
    * @private
    */
@@ -230,13 +260,13 @@ export class MetadataProcessor {
 
     // Set useCoords to true if any character prompt has non-default center coordinates
     metadata.useCoords = metadata.characterPrompts.some(
-      cp => (cp.center?.x !== 0.5 || cp.center?.y !== 0.5)
+      (cp) => cp.center?.x !== 0.5 || cp.center?.y !== 0.5,
     );
   }
 
   /**
    * Set default values for character prompts and deduplicate tags
-   * 
+   *
    * @param metadata - Metadata to update
    * @private
    */
@@ -244,13 +274,13 @@ export class MetadataProcessor {
     if (!metadata.characterPrompts?.length) {
       return;
     }
-    
+
     // Set default values for each character prompt
-    metadata.characterPrompts.forEach(cp => {
+    metadata.characterPrompts.forEach((cp) => {
       cp.enabled = cp.enabled ?? true;
       cp.prompt = cp.prompt ? deduplicateTags(cp.prompt) : "1girl, cute";
       cp.uc = cp.uc ? deduplicateTags(cp.uc) : "lowres, aliasing,";
-      
+
       // Ensure center coordinates exist with defaults
       cp.center = cp.center || { x: 0.5, y: 0.5 };
       cp.center.x = cp.center.x ?? 0.5;
@@ -260,7 +290,7 @@ export class MetadataProcessor {
 
   /**
    * Handle the V4 prompt format for V4/V4.5 models
-   * 
+   *
    * @param metadata - Metadata to update
    * @private
    */
@@ -272,22 +302,22 @@ export class MetadataProcessor {
 
     // Skip if model is not V4/V4.5
     const v4Models = [
-      Model.V4, 
-      Model.V4_INP, 
-      Model.V4_CUR, 
-      Model.V4_CUR_INP, 
-      Model.V4_5_CUR, 
-      Model.V4_5_CUR_INP
+      Model.V4,
+      Model.V4_INP,
+      Model.V4_CUR,
+      Model.V4_CUR_INP,
+      Model.V4_5_CUR,
+      Model.V4_5_CUR_INP,
     ];
-    
+
     if (!metadata.model || !v4Models.includes(metadata.model)) {
       return;
     }
 
     const charCaptions: CharacterCaption[] = [];
-    
+
     // Create character captions based on enabled character prompts
-    metadata.characterPrompts?.forEach(cp => {
+    metadata.characterPrompts?.forEach((cp) => {
       if (cp.enabled) {
         charCaptions.push({
           charCaption: cp.prompt,
@@ -309,7 +339,7 @@ export class MetadataProcessor {
 
   /**
    * Handle the V4 negative prompt format for V4/V4.5 models
-   * 
+   *
    * @param metadata - Metadata to update
    * @private
    */
@@ -321,22 +351,22 @@ export class MetadataProcessor {
 
     // Skip if model is not V4/V4.5
     const v4Models = [
-      Model.V4, 
-      Model.V4_INP, 
-      Model.V4_CUR, 
-      Model.V4_CUR_INP, 
-      Model.V4_5_CUR, 
-      Model.V4_5_CUR_INP
+      Model.V4,
+      Model.V4_INP,
+      Model.V4_CUR,
+      Model.V4_CUR_INP,
+      Model.V4_5_CUR,
+      Model.V4_5_CUR_INP,
     ];
-    
+
     if (!metadata.model || !v4Models.includes(metadata.model)) {
       return;
     }
 
     const charCaptions: CharacterCaption[] = [];
-    
+
     // Create character captions based on enabled character prompts with UC
-    metadata.characterPrompts?.forEach(cp => {
+    metadata.characterPrompts?.forEach((cp) => {
       if (cp.enabled && cp.uc) {
         charCaptions.push({
           charCaption: cp.uc,
