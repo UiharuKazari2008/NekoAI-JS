@@ -187,7 +187,7 @@ export class MetadataProcessor {
       }
     } else if (metadata.model === Model.V4 || metadata.model === Model.V4_INP) {
       if (metadata.ucPreset === 0) {
-        uc = ", blurry, lowres, upscaled, artistic error, film grain, scan artifacts, bad anatomy, bad hands, worst quality, bad quality, jpeg artifacts, very displeasing, chromatic aberration, halftone, multiple views, logo, too many watermarks, @_@, mismatched pupils, glowing eyes, negative space, blank page";
+        uc = ", blurry, lowres, error, film grain, scan artifacts, worst quality, bad quality, jpeg artifacts, very displeasing, chromatic aberration, multiple views, logo, too many watermarks";
       } else if (metadata.ucPreset === 1) {
         uc = ", blurry, lowres, error, worst quality, bad quality, jpeg artifacts, very displeasing";
       }
