@@ -7,7 +7,7 @@ export default defineConfig({
   splitting: false,
   clean: true,
   external: ["fs", "path", "canvas"], // Mark Node.js built-ins as external
-  noExternal: ["jszip"], // 👈 THIS tells tsup to force-bundle `jszip`
+  noExternal: ["jszip", "pako", "png-chunks-extract", "png-chunk-text", "exifreader"], // Bundle these dependencies
   target: "es2020",
   define: {
     "process.env.NODE_ENV": '"production"',

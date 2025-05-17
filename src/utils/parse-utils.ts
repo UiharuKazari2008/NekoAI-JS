@@ -7,6 +7,10 @@
 import { parseImage } from "./image-utils";
 import { ImageInput } from "../types";
 import { isNodeEnvironment } from "./platform-utils";
+import pako from "pako";
+import extractChunks from "png-chunks-extract";
+import * as pngChunkText from "png-chunk-text";
+import ExifReader from "exifreader";
 
 /**
  * Metadata types that can be extracted from AI-generated images
@@ -98,47 +102,7 @@ export interface ImageSummary {
   rawEntries: MetadataEntry[];
 }
 
-/**
- * Load necessary modules for metadata extraction
- */
-async function loadMetadataModules() {
-  try {
-    const modules: Record<string, any> = {};
-
-    // Try to load pako for decompression if needed
-    try {
-      modules.pako = await import("pako");
-    } catch (err) {
-      console.warn(
-        "pako module not available, stealth metadata extraction will be limited",
-      );
-    }
-
-    // Try to load PNG chunk extraction modules
-    try {
-      modules.extractChunks = (await import("png-chunks-extract")).default;
-      modules.pngChunkText = await import("png-chunk-text");
-    } catch (err) {
-      console.warn(
-        "PNG chunk extraction modules not available, PNG metadata extraction will be limited",
-      );
-    }
-
-    // Try to load ExifReader
-    try {
-      modules.ExifReader = (await import("exifreader")).default;
-    } catch (err) {
-      console.warn(
-        "ExifReader module not available, EXIF metadata extraction will be limited",
-      );
-    }
-
-    return modules;
-  } catch (err) {
-    console.error("Failed to load metadata modules:", err);
-    return {};
-  }
-}
+// All modules are now imported statically at the top of the file
 
 /**
  * Extract PNG metadata using chunk extraction
@@ -251,7 +215,12 @@ async function extractStealthMetadata(
     if (isNodeEnvironment()) {
       // Node.js environment
       try {
-        const canvasModule = await import("canvas");
+        // Dynamic import for Node.js only to prevent browser bundling issues
+        const canvasModule = await import("canvas").catch(() => {
+          console.error("Canvas module not installed in Node environment");
+          throw new Error("Canvas module required for stealth metadata extraction in Node");
+        });
+        
         img = await canvasModule.loadImage(
           `data:image/png;base64,${imageData.base64}`,
         );
@@ -264,6 +233,7 @@ async function extractStealthMetadata(
     } else {
       // Browser environment
       canvas = document.createElement("canvas");
+      // Use standard options for better compatibility across browsers
       ctx = canvas.getContext("2d", { willReadFrequently: true });
       if (!ctx) {
         console.error("Failed to get canvas 2d context");
@@ -271,12 +241,16 @@ async function extractStealthMetadata(
       }
 
       img = new Image();
+      // Set crossOrigin for CORS compatibility when loading remote images
+      img.crossOrigin = "anonymous";
       img.src = `data:image/png;base64,${imageData.base64}`;
 
       // Wait for image to load in browser
       await new Promise<void>((resolve, reject) => {
         img.onload = () => resolve();
-        img.onerror = () => reject(new Error("Failed to load image"));
+        img.onerror = (e: Event | string) => reject(new Error(`Failed to load image: ${e}`));
+        // Add timeout to prevent hanging
+        setTimeout(() => reject(new Error("Image loading timeout")), 30000);
       });
     }
 
@@ -381,11 +355,11 @@ export async function extractImageMetadata(
   input: ImageInput,
 ): Promise<ImageMetadata> {
   try {
-    // Load necessary modules
-    const modules = await loadMetadataModules();
-
     // First, parse the image to get a consistent format
-    const parsedImage = await parseImage(input);
+    const parsedImage = await parseImage(input).catch(err => {
+      console.error("Failed to parse image:", err);
+      throw new Error(`Image parsing failed: ${err.message || "Unknown error"}`);
+    });
 
     let metadata: MetadataEntry[] = [];
     let metadataType = MetadataType.UNKNOWN;
@@ -394,16 +368,15 @@ export async function extractImageMetadata(
     if (input instanceof File || input instanceof Blob) {
       const fileType = input.type;
 
-      if (fileType === "image/png" && modules.extractChunks) {
+      if (fileType === "image/png") {
         // For PNG files, extract chunks
         const buffer = await input.arrayBuffer();
-        metadata = await extractPngMetadata(buffer, modules);
+        metadata = await extractPngMetadata(buffer, { extractChunks, pngChunkText });
       } else if (
-        ["image/webp", "image/jpeg", "image/avif"].includes(fileType) &&
-        modules.ExifReader
+        ["image/webp", "image/jpeg", "image/avif"].includes(fileType)
       ) {
         // For JPEG/WEBP/AVIF, extract EXIF
-        metadata = await extractExifMetadata(input, modules);
+        metadata = await extractExifMetadata(input, { ExifReader });
       }
     } else if (typeof input === "string") {
       // For file paths or URLs, try to determine type and handle accordingly
@@ -419,16 +392,15 @@ export async function extractImageMetadata(
           const fs = await import("fs/promises");
           const buffer = await fs.readFile(input);
 
-          if (input.toLowerCase().endsWith(".png") && modules.extractChunks) {
-            metadata = await extractPngMetadata(buffer.buffer, modules);
+          if (input.toLowerCase().endsWith(".png")) {
+            metadata = await extractPngMetadata(buffer.buffer, { extractChunks, pngChunkText });
           } else if (
             [".jpg", ".jpeg", ".webp", ".avif"].some((ext) =>
               input.toLowerCase().endsWith(ext),
-            ) &&
-            modules.ExifReader
+            )
           ) {
             const blob = new Blob([buffer]);
-            metadata = await extractExifMetadata(blob, modules);
+            metadata = await extractExifMetadata(blob, { ExifReader });
           }
         } catch (fsErr) {
           console.error("Failed to read local file:", fsErr);
@@ -438,7 +410,7 @@ export async function extractImageMetadata(
 
     // If no metadata found, try stealth extraction
     if (metadata.length === 0) {
-      const stealthData = await extractStealthMetadata(parsedImage, modules);
+      const stealthData = await extractStealthMetadata(parsedImage, { pako });
 
       if (stealthData) {
         metadata = convertStealthMetadataToEntries(stealthData);
@@ -498,8 +470,9 @@ export async function extractRawMetadata(
 export async function getImageSummary(
   input: ImageInput,
 ): Promise<ImageSummary> {
-  const parsedImage = await parseImage(input);
-  const metadata = await extractImageMetadata(input);
+  try {
+    const parsedImage = await parseImage(input);
+    const metadata = await extractImageMetadata(input);
 
   const summary: ImageSummary = {
     dimensions: {
@@ -572,4 +545,13 @@ export async function getImageSummary(
   }
 
   return summary;
+  } catch (error) {
+    console.error("Failed to create image summary:", error);
+    return {
+      dimensions: { width: 0, height: 0 },
+      hasMetadata: false,
+      metadataType: MetadataType.NONE,
+      rawEntries: [],
+    };
+  }
 }
