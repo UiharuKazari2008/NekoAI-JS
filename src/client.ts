@@ -89,7 +89,7 @@ export class NovelAI {
     }
 
     // Handle vibe transfer for V4 models
-    await this.encodeVibe(processedMetadata);
+    await this.encodeVibe(processedMetadata, host);
 
     // Get host instance details
     const hostInstance =
@@ -142,9 +142,7 @@ export class NovelAI {
     const timeoutId = setTimeout(() => controller.abort(), this.timeout);
 
     const jsonPayload = JSON.stringify(payload);
-
-    console.log("✨ Sending request to NovelAI API... with:", jsonPayload);
-
+    
     try {
       // Make the API request
       const response = await fetch(url, {
@@ -518,7 +516,10 @@ export class NovelAI {
    * @returns Promise resolving when encoding is complete
    * @private
    */
-  private async encodeVibe(metadata: Metadata): Promise<void> {
+  private async encodeVibe(
+    metadata: Metadata,
+    host: Host | HostInstance = Host.WEB,
+  ): Promise<void> {
     // Skip if model is not V4 or V4 Curated
     const v4Models = [Model.V4, Model.V4_CUR];
     if (!metadata.model || !v4Models.includes(metadata.model)) {
@@ -562,8 +563,9 @@ export class NovelAI {
           model: metadata.model,
         };
 
-        // Use the web host for vibe encoding
-        const hostInstance = HOST_INSTANCES[Host.WEB];
+        // Get host instance details
+        const hostInstance =
+          typeof host === "string" ? HOST_INSTANCES[host as Host] : host;
 
         try {
           // Make the API request using our central request method

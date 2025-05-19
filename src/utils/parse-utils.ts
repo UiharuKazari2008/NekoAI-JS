@@ -218,9 +218,11 @@ async function extractStealthMetadata(
         // Dynamic import for Node.js only to prevent browser bundling issues
         const canvasModule = await import("canvas").catch(() => {
           console.error("Canvas module not installed in Node environment");
-          throw new Error("Canvas module required for stealth metadata extraction in Node");
+          throw new Error(
+            "Canvas module required for stealth metadata extraction in Node",
+          );
         });
-        
+
         img = await canvasModule.loadImage(
           `data:image/png;base64,${imageData.base64}`,
         );
@@ -248,7 +250,8 @@ async function extractStealthMetadata(
       // Wait for image to load in browser
       await new Promise<void>((resolve, reject) => {
         img.onload = () => resolve();
-        img.onerror = (e: Event | string) => reject(new Error(`Failed to load image: ${e}`));
+        img.onerror = (e: Event | string) =>
+          reject(new Error(`Failed to load image: ${e}`));
         // Add timeout to prevent hanging
         setTimeout(() => reject(new Error("Image loading timeout")), 30000);
       });
@@ -356,9 +359,11 @@ export async function extractImageMetadata(
 ): Promise<ImageMetadata> {
   try {
     // First, parse the image to get a consistent format
-    const parsedImage = await parseImage(input).catch(err => {
+    const parsedImage = await parseImage(input).catch((err) => {
       console.error("Failed to parse image:", err);
-      throw new Error(`Image parsing failed: ${err.message || "Unknown error"}`);
+      throw new Error(
+        `Image parsing failed: ${err.message || "Unknown error"}`,
+      );
     });
 
     let metadata: MetadataEntry[] = [];
@@ -371,7 +376,10 @@ export async function extractImageMetadata(
       if (fileType === "image/png") {
         // For PNG files, extract chunks
         const buffer = await input.arrayBuffer();
-        metadata = await extractPngMetadata(buffer, { extractChunks, pngChunkText });
+        metadata = await extractPngMetadata(buffer, {
+          extractChunks,
+          pngChunkText,
+        });
       } else if (
         ["image/webp", "image/jpeg", "image/avif"].includes(fileType)
       ) {
@@ -393,7 +401,10 @@ export async function extractImageMetadata(
           const buffer = await fs.readFile(input);
 
           if (input.toLowerCase().endsWith(".png")) {
-            metadata = await extractPngMetadata(buffer.buffer, { extractChunks, pngChunkText });
+            metadata = await extractPngMetadata(buffer.buffer, {
+              extractChunks,
+              pngChunkText,
+            });
           } else if (
             [".jpg", ".jpeg", ".webp", ".avif"].some((ext) =>
               input.toLowerCase().endsWith(ext),
@@ -474,77 +485,77 @@ export async function getImageSummary(
     const parsedImage = await parseImage(input);
     const metadata = await extractImageMetadata(input);
 
-  const summary: ImageSummary = {
-    dimensions: {
-      width: parsedImage.width,
-      height: parsedImage.height,
-    },
-    hasMetadata: metadata.entries.length > 0,
-    metadataType: metadata.type,
-    rawEntries: metadata.entries,
-  };
-
-  // Extract key information based on metadata type
-  if (metadata.type === MetadataType.STABLE_DIFFUSION_WEBUI) {
-    summary.generationTool = "Stable Diffusion WebUI";
-
-    // Find positive and negative prompts
-    const positivePrompt = metadata.entries.find(
-      (e) => e.keyword === "Positive prompt",
-    );
-    const negativePrompt = metadata.entries.find(
-      (e) => e.keyword === "Negative prompt",
-    );
-    const genParams = metadata.entries.find(
-      (e) => e.keyword === "Generation parameters",
-    );
-
-    if (positivePrompt) summary.positivePrompt = positivePrompt.text;
-    if (negativePrompt) summary.negativePrompt = negativePrompt.text;
-
-    // Parse parameters like Steps, Sampler, CFG, etc.
-    if (genParams) {
-      const params: Record<string, any> = {};
-      const paramParts = genParams.text.split(",").map((p) => p.trim());
-
-      paramParts.forEach((part) => {
-        const colonIndex = part.indexOf(":");
-        if (colonIndex > 0) {
-          const key = part.slice(0, colonIndex).trim();
-          const value = part.slice(colonIndex + 1).trim();
-          params[key] = value;
-        }
-      });
-
-      summary.parameters = params;
-    }
-  } else if (metadata.type === MetadataType.NOVELAI) {
-    summary.generationTool = "NovelAI";
-
-    // Find common NovelAI entries
-    const prompt = metadata.entries.find((e) => e.keyword === "prompt");
-    const uc = metadata.entries.find((e) => e.keyword === "uc");
-
-    if (prompt) summary.positivePrompt = prompt.text;
-    if (uc) summary.negativePrompt = uc.text;
-
-    // Convert all entries to parameters
-    summary.parameters = metadata.entries.reduce(
-      (acc, entry) => {
-        if (entry.keyword !== "prompt" && entry.keyword !== "uc") {
-          try {
-            acc[entry.keyword] = JSON.parse(entry.text);
-          } catch {
-            acc[entry.keyword] = entry.text;
-          }
-        }
-        return acc;
+    const summary: ImageSummary = {
+      dimensions: {
+        width: parsedImage.width,
+        height: parsedImage.height,
       },
-      {} as Record<string, any>,
-    );
-  }
+      hasMetadata: metadata.entries.length > 0,
+      metadataType: metadata.type,
+      rawEntries: metadata.entries,
+    };
 
-  return summary;
+    // Extract key information based on metadata type
+    if (metadata.type === MetadataType.STABLE_DIFFUSION_WEBUI) {
+      summary.generationTool = "Stable Diffusion WebUI";
+
+      // Find positive and negative prompts
+      const positivePrompt = metadata.entries.find(
+        (e) => e.keyword === "Positive prompt",
+      );
+      const negativePrompt = metadata.entries.find(
+        (e) => e.keyword === "Negative prompt",
+      );
+      const genParams = metadata.entries.find(
+        (e) => e.keyword === "Generation parameters",
+      );
+
+      if (positivePrompt) summary.positivePrompt = positivePrompt.text;
+      if (negativePrompt) summary.negativePrompt = negativePrompt.text;
+
+      // Parse parameters like Steps, Sampler, CFG, etc.
+      if (genParams) {
+        const params: Record<string, any> = {};
+        const paramParts = genParams.text.split(",").map((p) => p.trim());
+
+        paramParts.forEach((part) => {
+          const colonIndex = part.indexOf(":");
+          if (colonIndex > 0) {
+            const key = part.slice(0, colonIndex).trim();
+            const value = part.slice(colonIndex + 1).trim();
+            params[key] = value;
+          }
+        });
+
+        summary.parameters = params;
+      }
+    } else if (metadata.type === MetadataType.NOVELAI) {
+      summary.generationTool = "NovelAI";
+
+      // Find common NovelAI entries
+      const prompt = metadata.entries.find((e) => e.keyword === "prompt");
+      const uc = metadata.entries.find((e) => e.keyword === "uc");
+
+      if (prompt) summary.positivePrompt = prompt.text;
+      if (uc) summary.negativePrompt = uc.text;
+
+      // Convert all entries to parameters
+      summary.parameters = metadata.entries.reduce(
+        (acc, entry) => {
+          if (entry.keyword !== "prompt" && entry.keyword !== "uc") {
+            try {
+              acc[entry.keyword] = JSON.parse(entry.text);
+            } catch {
+              acc[entry.keyword] = entry.text;
+            }
+          }
+          return acc;
+        },
+        {} as Record<string, any>,
+      );
+    }
+
+    return summary;
   } catch (error) {
     console.error("Failed to create image summary:", error);
     return {
