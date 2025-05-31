@@ -48,6 +48,8 @@ export class MetadataProcessor {
     // Handle sampler-specific settings
     this.handleSamplerSpecificSettings(result);
 
+    this.handleInpaintImg2ImgStrength(result);
+
     return result;
   }
 
@@ -58,26 +60,31 @@ export class MetadataProcessor {
    * @private
    */
   private applyDefaultValues(metadata: Metadata): void {
-    metadata.model = metadata.model || Model.V4;
-    metadata.action = metadata.action || Action.GENERATE;
+    metadata.model = metadata.model ?? Model.V4;
+    metadata.action = metadata.action ?? Action.GENERATE;
     metadata.ucPreset = metadata.ucPreset ?? 0;
     metadata.qualityToggle = metadata.qualityToggle ?? true;
-    metadata.nSamples = metadata.nSamples || 1;
-    metadata.steps = metadata.steps || 28;
-    metadata.scale = metadata.scale || 6.0;
-    metadata.dynamicThresholding = metadata.dynamicThresholding || false;
-    metadata.seed = metadata.seed || Math.floor(Math.random() * 4294967288);
-    metadata.sampler = metadata.sampler || Sampler.EULER_ANC;
-    metadata.cfgRescale = metadata.cfgRescale || 0;
-    metadata.noiseSchedule = metadata.noiseSchedule || Noise.KARRAS;
-    metadata.controlnetStrength = metadata.controlnetStrength || 1;
+    metadata.nSamples = metadata.nSamples ?? 1;
+    metadata.steps = metadata.steps ?? 28;
+    metadata.scale = metadata.scale ?? 6.0;
+    metadata.dynamicThresholding = metadata.dynamicThresholding ?? false;
+    metadata.seed = metadata.seed ?? Math.floor(Math.random() * 4294967288);
+    metadata.sampler = metadata.sampler ?? Sampler.EULER_ANC;
+    metadata.cfgRescale = metadata.cfgRescale ?? 0;
+    metadata.noiseSchedule = metadata.noiseSchedule ?? Noise.KARRAS;
+    metadata.controlnetStrength = metadata.controlnetStrength ?? 1;
     metadata.addOriginalImage = metadata.addOriginalImage ?? true;
-    metadata.autoSmea = metadata.autoSmea || false;
-    metadata.paramsVersion = metadata.paramsVersion || 3;
-    metadata.prompt = metadata.prompt || "1girl, cute";
-    metadata.negativePrompt = metadata.negativePrompt || "";
-    metadata.characterPrompts = metadata.characterPrompts || [];
+    metadata.autoSmea = metadata.autoSmea ?? false;
+    metadata.paramsVersion = metadata.paramsVersion ?? 3;
+    metadata.prompt = metadata.prompt ?? "1girl, cute";
+    metadata.negativePrompt = metadata.negativePrompt ?? "";
+    metadata.characterPrompts = metadata.characterPrompts ?? [];
+    metadata.skipCfgAboveSigma = metadata.skipCfgAboveSigma ?? 19;
+    metadata.legacyUc = metadata.legacyUc ?? false;
+    metadata.normalizeReferenceStrengthMultiple = metadata.normalizeReferenceStrengthMultiple ?? true;
   }
+
+
 
   /**
    * Handle action-specific parameters (img2img and inpaint)
@@ -113,6 +120,8 @@ export class MetadataProcessor {
       Model.V4_CUR_INP,
       Model.V4_5_CUR,
       Model.V4_5_CUR_INP,
+      Model.V4_5,
+      Model.V4_5_INP,
     ];
 
     // Drop sm and sm_dyn for V4+ models
@@ -148,8 +157,15 @@ export class MetadataProcessor {
     }
 
     let qualityTags = "";
-
+    
     if (
+      metadata.model === Model.V4_5 ||
+      metadata.model === Model.V4_5_INP
+    ) {
+      qualityTags =
+        ", location, very aesthetic, masterpiece, no text";
+    }
+    else if (
       metadata.model === Model.V4_5_CUR ||
       metadata.model === Model.V4_5_CUR_INP
     ) {
@@ -187,6 +203,24 @@ export class MetadataProcessor {
     let uc = "";
 
     if (
+      metadata.model === Model.V4_5 ||
+      metadata.model === Model.V4_5_INP
+    ) {
+      if (metadata.ucPreset === 0) {
+        uc =
+          ", nsfw, lowres, artistic error, film grain, scan artifacts, worst quality, bad quality, jpeg artifacts, very displeasing, chromatic aberration, dithering, halftone, screentone, multiple views, logo, too many watermarks, negative space, blank page";
+      } else if (metadata.ucPreset === 1) {
+        uc =
+          ", nsfw, lowres, artistic error, scan artifacts, worst quality, bad quality, jpeg artifacts, multiple views, very displeasing, too many watermarks, negative space, blank page";
+      } else if (metadata.ucPreset === 2) {
+        uc =
+          ", nsfw, {worst quality}, distracting watermark, unfinished, bad quality, {widescreen}, upscale, {sequence}, {{grandfathered content}}, blurred foreground, chromatic aberration, sketch, everyone, [sketch background], simple, [flat colors], ych (character), outline, multiple scenes, [[horror (theme)]], comic";
+      } else if (metadata.ucPreset === 3) {
+        uc =
+          ", nsfw, lowres, artistic error, film grain, scan artifacts, worst quality, bad quality, jpeg artifacts, very displeasing, chromatic aberration, dithering, halftone, screentone, multiple views, logo, too many watermarks, negative space, blank page, @_@, mismatched pupils, glowing eyes, bad anatomy";
+      }
+    }
+    else if (
       metadata.model === Model.V4_5_CUR ||
       metadata.model === Model.V4_5_CUR_INP
     ) {
@@ -244,6 +278,19 @@ export class MetadataProcessor {
     }
 
     metadata.negativePrompt += uc;
+  }
+
+  /**
+   * Handle img2img strength for V4.5 models
+   * Sets default strength if not provided
+   *
+   * @param metadata - Metadata to update
+   * @private
+   */
+  handleInpaintImg2ImgStrength(metadata: Metadata): void {
+    if (metadata.model === Model.V4_5 || metadata.model === Model.V4_5_INP) {
+      metadata.inpaintImg2ImgStrength = metadata.inpaintImg2ImgStrength || 1;
+    }
   }
 
   /**
@@ -308,6 +355,8 @@ export class MetadataProcessor {
       Model.V4_CUR_INP,
       Model.V4_5_CUR,
       Model.V4_5_CUR_INP,
+      Model.V4_5,
+      Model.V4_5_INP,
     ];
 
     if (!metadata.model || !v4Models.includes(metadata.model)) {
@@ -357,6 +406,8 @@ export class MetadataProcessor {
       Model.V4_CUR_INP,
       Model.V4_5_CUR,
       Model.V4_5_CUR_INP,
+      Model.V4_5,
+      Model.V4_5_INP,
     ];
 
     if (!metadata.model || !v4Models.includes(metadata.model)) {

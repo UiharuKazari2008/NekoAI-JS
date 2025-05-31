@@ -3,12 +3,12 @@ const fs = require("fs");
 require("dotenv").config();
 
 // Test function for img2img generation
-async function testImg2Img() {
+async function testImg2Img45Full() {
   const client = new NovelAI({
     token: process.env.NOVELAI_TOKEN,
   });
 
-  console.log("Testing img2img generation...");
+  console.log("Testing img2img V4.5 generation...");
 
   // Path to the input image
   const imagePath = "./examples/input/image.png"; // Update this path to your input image
@@ -32,18 +32,19 @@ async function testImg2Img() {
       {
         prompt:
           "masterpiece, highly detailed, fantasy landscape, mountains, magical",
-        model: Model.V4,
+        model: Model.V4_5,
         action: Action.IMG2IMG,
         width: dimensions.width,
         height: dimensions.height,
         nSamples: 1,
         steps: 28,
-        scale: 7.0,
+        scale: 5.5,
         sampler: Sampler.DPM2S_ANC,
         dynamicThresholding: false,
         cfgRescale: 0,
         noiseSchedule: Noise.KARRAS,
         seed: Math.floor(Math.random() * 4294967288),
+        extraNoiseSeed: Math.floor(Math.random() * 4294967288),
         ucPreset: 0,
         qualityToggle: true,
 
@@ -87,7 +88,7 @@ function getImageDimensions(imagePath) {
 
 // Run the test if this script is executed directly
 if (require.main === module) {
-  testImg2Img().catch(console.error);
+  testImg2Img45Full().catch(console.error);
 }
 
-module.exports = { testImg2Img };
+module.exports = { testImg2Img: testImg2Img45Full };

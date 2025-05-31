@@ -8,6 +8,8 @@ async function testInpaint() {
     token: process.env.NOVELAI_TOKEN,
   });
 
+  return; // Disable inpainting test for now
+
   console.log("Testing inpainting...");
 
   // Paths to the input image and mask

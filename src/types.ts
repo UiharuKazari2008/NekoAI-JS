@@ -198,9 +198,14 @@ export interface Metadata {
   deliberateEulerAncestralBug?: boolean; // Will be converted to deliberate_euler_ancestral_bug
   preferBrownian?: boolean; // Will be converted to prefer_brownian
 
+  // V4.5 specific settings
+  inpaintImg2ImgStrength?: number; // Will be converted to inpaint_img2img_strength, default to 1
+
   // Misc settings
   legacy?: boolean;
   legacyV3Extend?: boolean; // Will be converted to legacy_v3_extend
+
+
 }
 
 // Image related types

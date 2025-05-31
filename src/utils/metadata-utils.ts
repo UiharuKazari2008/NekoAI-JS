@@ -27,7 +27,7 @@ export function prepareMetadataForApi(metadata: Metadata): any {
   // Create formatted parameters object matching NovelAI's expected format
   const formattedParams: Record<string, any> = {};
 
-  // Fields that should remain in camelCase format
+  // Fields that should remain in camelCase format, unchanged by conversion
   const camelCaseFields = [
     "ucPreset",
     "qualityToggle",
@@ -35,6 +35,7 @@ export function prepareMetadataForApi(metadata: Metadata): any {
     "characterPrompts",
     "v4_prompt",
     "v4_negative_prompt",
+    "inpaintImg2ImgStrength",
   ];
 
   // Process all parameters
