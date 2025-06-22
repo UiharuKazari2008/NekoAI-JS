@@ -13,6 +13,7 @@ export default defineConfig({
     "png-chunks-extract",
     "png-chunk-text",
     "exifreader",
+    "@msgpack/msgpack",
   ], // Bundle these dependencies
   target: "es2020",
   define: {

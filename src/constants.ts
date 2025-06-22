@@ -1,54 +1,35 @@
-import { HostInstance } from "./types";
-
 export const HEADERS = {
+  Accept: "*/*",
+  "Accept-Language": "en-US,en;q=0.5",
+  "Accept-Encoding": "gzip, deflate, br",
   "Content-Type": "application/json",
+  Host: "image.novelai.net",
   Origin: "https://novelai.net",
   Referer: "https://novelai.net",
+  DNT: "1",
+  "Sec-GPC": "1",
+  Connection: "keep-alive",
+  "Sec-Fetch-Dest": "empty",
+  "Sec-Fetch-Mode": "cors",
+  "Sec-Fetch-Site": "same-site",
+  Priority: "u=0",
+  Pragma: "no-cache",
+  "Cache-Control": "no-cache",
+  TE: "trailers",
   "User-Agent":
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:138.0) Gecko/20100101 Firefox/138.0",
 };
 
 export enum Host {
-  API = "api",
-  WEB = "web",
-}
-
-export const HOST_INSTANCES: Record<Host, HostInstance> = {
-  [Host.API]: {
-    url: "https://api.novelai.net",
-    accept: "application/x-zip-compressed",
-    name: "api",
-  },
-  [Host.WEB]: {
-    url: "https://image.novelai.net",
-    accept: "binary/octet-stream",
-    name: "web",
-  },
-};
-
-/**
- * Create a custom host configuration
- * @param url - The URL of the host
- * @param accept - The accept header for the host
- * @param name - A name for the host (used for image filenames)
- * @returns A host instance
- */
-export function createCustomHost(
-  url: string,
-  accept: string = "binary/octet-stream",
-  name = "custom",
-): HostInstance {
-  return {
-    url,
-    accept,
-    name,
-  };
+  WEB = "https://image.novelai.net",
+  API = "https://api.novelai.net",
 }
 
 export enum Endpoint {
   LOGIN = "/user/login",
   USERDATA = "/user/data",
   IMAGE = "/ai/generate-image",
+  IMAGE_STREAM = "/ai/generate-image-stream",
   DIRECTOR = "/ai/augment-image",
   ENCODE_VIBE = "/ai/encode-vibe",
 }
@@ -72,6 +53,19 @@ export enum Model {
   // Furry model beta v1.3
   FURRY = "nai-diffusion-furry-3",
   FURRY_INP = "nai-diffusion-furry-3-inpainting",
+}
+
+export function isV4Model(model: Model): boolean {
+  return (
+    model === Model.V4 ||
+    model === Model.V4_INP ||
+    model === Model.V4_CUR ||
+    model === Model.V4_CUR_INP ||
+    model === Model.V4_5 ||
+    model === Model.V4_5_INP ||
+    model === Model.V4_5_CUR ||
+    model === Model.V4_5_CUR_INP
+  );
 }
 
 export enum Controlnet {
@@ -167,7 +161,7 @@ export enum Sampler {
   DPM2S_ANC = "k_dpmpp_2s_ancestral",
   DPM2M = "k_dpmpp_2m",
   DPMSDE = "k_dpmpp_sde",
-  DPM2MSDE = 'k_dpmpp_2m_sde',
+  DPM2MSDE = "k_dpmpp_2m_sde",
   DDIM = "ddim_v3",
 }
 

@@ -1,4 +1,11 @@
-import { Action, Model, Sampler, Noise } from "./constants";
+import {
+  Action,
+  Model,
+  Sampler,
+  Noise,
+  isV4Model,
+  Resolution,
+} from "./constants";
 import { Metadata, CharacterCaption } from "./types";
 import { deduplicateTags } from "./utils";
 
@@ -16,21 +23,16 @@ export class MetadataProcessor {
     // Create a deep copy to avoid modifying the original
     const result = JSON.parse(JSON.stringify(metadata)) as Metadata;
 
-    // Apply resolution preset if width/height not provided
-    if (result.resPreset && (!result.width || !result.height)) {
-      const dimensions = this.getResolutionDimensions(result.resPreset);
-      result.width = result.width || dimensions[0];
-      result.height = result.height || dimensions[1];
-    }
-
     this.applyDefaultValues(result);
+    this.handleResolution(result);
+
     this.handleUcPreset(result);
     this.handleQualityTags(result);
 
     // Deduplicate tags
     result.prompt = result.prompt ? deduplicateTags(result.prompt) : "";
-    result.negativePrompt = result.negativePrompt
-      ? deduplicateTags(result.negativePrompt)
+    result.negative_prompt = result.negative_prompt
+      ? deduplicateTags(result.negative_prompt)
       : "";
 
     // Handle img2img and inpaint specific parameters
@@ -39,6 +41,8 @@ export class MetadataProcessor {
     // Handle character-related parameters
     this.handleUseCoords(result);
     this.handleCharacterPrompts(result);
+    this.handleStream(result);
+
     this.handleV4Prompt(result);
     this.handleV4NegativePrompt(result);
 
@@ -60,31 +64,47 @@ export class MetadataProcessor {
    * @private
    */
   private applyDefaultValues(metadata: Metadata): void {
-    metadata.model = metadata.model ?? Model.V4;
+    metadata.model = metadata.model ?? Model.V4_5;
     metadata.action = metadata.action ?? Action.GENERATE;
+    metadata.resPreset = metadata.resPreset ?? Resolution.NORMAL_PORTRAIT;
     metadata.ucPreset = metadata.ucPreset ?? 0;
     metadata.qualityToggle = metadata.qualityToggle ?? true;
-    metadata.nSamples = metadata.nSamples ?? 1;
+    metadata.n_samples = metadata.n_samples ?? 1;
     metadata.steps = metadata.steps ?? 28;
     metadata.scale = metadata.scale ?? 6.0;
-    metadata.dynamicThresholding = metadata.dynamicThresholding ?? false;
+    metadata.dynamic_thresholding = metadata.dynamic_thresholding ?? false;
     metadata.seed = metadata.seed ?? Math.floor(Math.random() * 4294967288);
     metadata.sampler = metadata.sampler ?? Sampler.EULER_ANC;
-    metadata.cfgRescale = metadata.cfgRescale ?? 0;
-    metadata.noiseSchedule = metadata.noiseSchedule ?? Noise.KARRAS;
-    metadata.controlnetStrength = metadata.controlnetStrength ?? 1;
-    metadata.addOriginalImage = metadata.addOriginalImage ?? true;
+    metadata.cfg_rescale = metadata.cfg_rescale ?? 0;
+    metadata.noise_schedule = metadata.noise_schedule ?? Noise.KARRAS;
+    metadata.controlnet_strength = metadata.controlnet_strength ?? 1;
+    metadata.add_original_image = metadata.add_original_image ?? true;
     metadata.autoSmea = metadata.autoSmea ?? false;
-    metadata.paramsVersion = metadata.paramsVersion ?? 3;
+    metadata.params_version = metadata.params_version ?? 3;
     metadata.prompt = metadata.prompt ?? "1girl, cute";
-    metadata.negativePrompt = metadata.negativePrompt ?? "";
+    metadata.negative_prompt = metadata.negative_prompt ?? "";
     metadata.characterPrompts = metadata.characterPrompts ?? [];
-    metadata.skipCfgAboveSigma = metadata.skipCfgAboveSigma ?? 19;
-    metadata.legacyUc = metadata.legacyUc ?? false;
-    metadata.normalizeReferenceStrengthMultiple = metadata.normalizeReferenceStrengthMultiple ?? true;
+    metadata.skip_cfg_above_sigma = null;
+    metadata.legacy_uc = metadata.legacy_uc ?? false;
+    metadata.legacy = metadata.legacy ?? false;
+    metadata.legacy_v3_extend = metadata.legacy_v3_extend ?? false;
+    metadata.normalize_reference_strength_multiple =
+      metadata.normalize_reference_strength_multiple ?? true;
+    metadata.stream = undefined;
   }
 
-
+  /**
+   * Handle model-specific settings
+   *
+   * @param metadata - Metadata to update
+   * @private
+   */
+  private handleStream(metadata: Metadata): void {
+    // Ensure stream is always false for non-streaming actions
+    if (isV4Model(metadata.model) && metadata.action == Action.GENERATE) {
+      metadata.stream = "msgpack";
+    }
+  }
 
   /**
    * Handle action-specific parameters (img2img and inpaint)
@@ -98,11 +118,11 @@ export class MetadataProcessor {
       metadata.action === Action.INPAINT
     ) {
       metadata.sm = false;
-      metadata.smDyn = false;
+      metadata.sm_dyn = false;
       metadata.strength = metadata.strength || 0.3;
       metadata.noise = metadata.noise || 0;
-      metadata.extraNoiseSeed =
-        metadata.extraNoiseSeed || Math.floor(Math.random() * 4294967288);
+      metadata.extra_noise_seed =
+        metadata.extra_noise_seed || Math.floor(Math.random() * 4294967288);
     }
   }
 
@@ -127,7 +147,7 @@ export class MetadataProcessor {
     // Drop sm and sm_dyn for V4+ models
     if (metadata.model && v4Models.includes(metadata.model)) {
       metadata.sm = undefined;
-      metadata.smDyn = undefined;
+      metadata.sm_dyn = undefined;
     }
   }
 
@@ -139,8 +159,8 @@ export class MetadataProcessor {
    */
   private handleSamplerSpecificSettings(metadata: Metadata): void {
     if (metadata.sampler === Sampler.EULER_ANC) {
-      metadata.deliberateEulerAncestralBug = false;
-      metadata.preferBrownian = true;
+      metadata.deliberate_euler_ancestral_bug = false;
+      metadata.prefer_brownian = true;
     }
   }
 
@@ -157,15 +177,10 @@ export class MetadataProcessor {
     }
 
     let qualityTags = "";
-    
-    if (
-      metadata.model === Model.V4_5 ||
-      metadata.model === Model.V4_5_INP
-    ) {
-      qualityTags =
-        ", location, very aesthetic, masterpiece, no text";
-    }
-    else if (
+
+    if (metadata.model === Model.V4_5 || metadata.model === Model.V4_5_INP) {
+      qualityTags = ", very aesthetic, masterpiece, no text";
+    } else if (
       metadata.model === Model.V4_5_CUR ||
       metadata.model === Model.V4_5_CUR_INP
     ) {
@@ -202,10 +217,7 @@ export class MetadataProcessor {
   handleUcPreset(metadata: Metadata): void {
     let uc = "";
 
-    if (
-      metadata.model === Model.V4_5 ||
-      metadata.model === Model.V4_5_INP
-    ) {
+    if (metadata.model === Model.V4_5 || metadata.model === Model.V4_5_INP) {
       if (metadata.ucPreset === 0) {
         uc =
           ", nsfw, lowres, artistic error, film grain, scan artifacts, worst quality, bad quality, jpeg artifacts, very displeasing, chromatic aberration, dithering, halftone, screentone, multiple views, logo, too many watermarks, negative space, blank page";
@@ -219,8 +231,7 @@ export class MetadataProcessor {
         uc =
           ", nsfw, lowres, artistic error, film grain, scan artifacts, worst quality, bad quality, jpeg artifacts, very displeasing, chromatic aberration, dithering, halftone, screentone, multiple views, logo, too many watermarks, negative space, blank page, @_@, mismatched pupils, glowing eyes, bad anatomy";
       }
-    }
-    else if (
+    } else if (
       metadata.model === Model.V4_5_CUR ||
       metadata.model === Model.V4_5_CUR_INP
     ) {
@@ -277,7 +288,7 @@ export class MetadataProcessor {
       }
     }
 
-    metadata.negativePrompt += uc;
+    metadata.negative_prompt = uc + ", " + metadata.negative_prompt;
   }
 
   /**
@@ -301,12 +312,12 @@ export class MetadataProcessor {
    */
   handleUseCoords(metadata: Metadata): void {
     if (!metadata.characterPrompts?.length) {
-      metadata.useCoords = false;
+      metadata.use_coords = false;
       return;
     }
 
     // Set useCoords to true if any character prompt has non-default center coordinates
-    metadata.useCoords = metadata.characterPrompts.some(
+    metadata.use_coords = metadata.characterPrompts.some(
       (cp) => cp.center?.x !== 0.5 || cp.center?.y !== 0.5,
     );
   }
@@ -343,7 +354,7 @@ export class MetadataProcessor {
    */
   handleV4Prompt(metadata: Metadata): void {
     // Skip if v4Prompt is already set
-    if (metadata.v4Prompt) {
+    if (metadata.v4_prompt) {
       return;
     }
 
@@ -369,20 +380,20 @@ export class MetadataProcessor {
     metadata.characterPrompts?.forEach((cp) => {
       if (cp.enabled) {
         charCaptions.push({
-          charCaption: cp.prompt,
+          char_caption: cp.prompt,
           centers: [cp.center],
         });
       }
     });
 
     // Set up V4 prompt format
-    metadata.v4Prompt = {
+    metadata.v4_prompt = {
       caption: {
-        baseCaption: metadata.prompt || "",
-        charCaptions: charCaptions,
+        base_caption: metadata.prompt || "",
+        char_captions: charCaptions,
       },
-      useCoords: metadata.useCoords || false,
-      useOrder: true,
+      use_coords: metadata.use_coords || false,
+      use_order: true,
     };
   }
 
@@ -394,7 +405,7 @@ export class MetadataProcessor {
    */
   handleV4NegativePrompt(metadata: Metadata): void {
     // Skip if v4NegativePrompt is already set
-    if (metadata.v4NegativePrompt) {
+    if (metadata.v4_negative_prompt) {
       return;
     }
 
@@ -420,19 +431,19 @@ export class MetadataProcessor {
     metadata.characterPrompts?.forEach((cp) => {
       if (cp.enabled && cp.uc) {
         charCaptions.push({
-          charCaption: cp.uc,
+          char_caption: cp.uc,
           centers: [cp.center],
         });
       }
     });
 
     // Set up V4 negative prompt format
-    metadata.v4NegativePrompt = {
+    metadata.v4_negative_prompt = {
       caption: {
-        baseCaption: metadata.negativePrompt || "",
-        charCaptions: charCaptions,
+        base_caption: metadata.negative_prompt || "",
+        char_captions: charCaptions,
       },
-      legacyUc: metadata.legacyUc || false,
+      legacy_uc: metadata.legacy_uc || false,
     };
   }
 
@@ -457,7 +468,46 @@ export class MetadataProcessor {
       wallpaper_landscape: [1920, 1088],
     };
 
-    return dimensionsMap[preset] || [1024, 1024];
+    return dimensionsMap[preset] || [832, 1216]; // Default to normal_portrait if preset not found
+  }
+
+  /**
+   * Handle the resolution preset. If width and height are not set, use the resolution preset.
+   * If width and height are set, override the resolution preset.
+   * If width or height are not multiple of 64, round them to the nearest multiple of 64.
+   * If the product of the width and height is not in the allowed range (64-3047424), raise ValueError.
+   *
+   * @param metadata - Metadata to update
+   * @private
+   */
+  private handleResolution(metadata: Metadata): void {
+    if (metadata.width == null || metadata.height == null) {
+      // Use resolution preset if width/height not provided
+      if (metadata.resPreset) {
+        const dimensions = this.getResolutionDimensions(metadata.resPreset);
+        metadata.width = dimensions[0];
+        metadata.height = dimensions[1];
+      } else {
+        // Default to normal_square if no preset specified
+        metadata.width = 832;
+        metadata.height = 1216;
+      }
+    } else {
+      // Round width and height to the nearest multiple of 64
+      metadata.width = Math.floor((metadata.width + 63) / 64) * 64;
+      metadata.height = Math.floor((metadata.height + 63) / 64) * 64;
+    }
+
+    // Validate the total resolution is within allowed range
+    const totalPixels = metadata.width * metadata.height;
+    const minPixels = 64 * 64; // 4096
+    const maxPixels = 3047424;
+
+    if (totalPixels < minPixels || totalPixels > maxPixels) {
+      throw new Error(
+        `The maximum allowed total resolution is ${maxPixels} px, got ${metadata.width}x${metadata.height}=${totalPixels}.`,
+      );
+    }
   }
 }
 

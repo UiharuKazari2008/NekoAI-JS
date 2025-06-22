@@ -2,7 +2,7 @@
 export { NovelAI } from "./client";
 
 // Export image class
-export { Image } from "./image";
+export { Image, MsgpackEvent, EventType } from "./image";
 
 // Export constants
 export {
@@ -17,16 +17,13 @@ export {
   Resolution,
   RESOLUTION_DIMENSIONS,
   Sampler,
-  createCustomHost,
 } from "./constants";
 
 // Export types
 export type {
   CharacterCaption,
   CharacterPrompt,
-  CustomHost,
   DirectorRequest,
-  HostInstance,
   ImageOptions,
   Metadata,
   NovelAIError,

@@ -40,7 +40,7 @@
     "stable-diffusion"
   ],
   "author": "Nya Foundation",
-  "license": "MIT",
+  "license": "AGPL-3.0",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Nya-Foundation/NekoAI-JS.git"
@@ -70,11 +70,12 @@
     "dotenv": "^16.5.0"
   },
   "dependencies": {
+    "@msgpack/msgpack": "^3.1.2",
+    "exifreader": "^4.12.0",
     "jszip": "^3.10.1",
     "pako": "^2.1.0",
-    "png-chunks-extract": "^1.0.0",
     "png-chunk-text": "^1.0.0",
-    "exifreader": "^4.12.0"
+    "png-chunks-extract": "^1.0.0"
   },
   "optionalDependencies": {
     "canvas": "^2.11.2"

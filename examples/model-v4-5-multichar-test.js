@@ -5,6 +5,7 @@ require("dotenv").config();
 async function testModelV45MultiChar() {
   const client = new NovelAI({
     token: process.env.NOVELAI_TOKEN,
+    verbose: true,
   });
 
   console.log("Testing Model V4.5 with multiple characters...");
@@ -18,8 +19,8 @@ async function testModelV45MultiChar() {
         steps: 28,
         scale: 5.5,
         sampler: "k_euler_ancestral",
-        noiseSchedule: "karras",
-        negativePrompt:
+        noise_schedule: "karras",
+        negative_prompt:
           "nsfw, lowres, bad anatomy, bad hands, text, error, missing fingers, extra digit",
         // Character prompts for multiple characters
         characterPrompts: [

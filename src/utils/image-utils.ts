@@ -2,6 +2,34 @@ import { ImageInput, ParsedImage } from "../types";
 import { isNodeEnvironment, loadNodeCanvas } from "./platform-utils";
 
 /**
+ * Convert a base64 string to a Uint8Array
+ * @param base64 - Base64 encoded string
+ * @returns Uint8Array of the data
+ */
+export function base64ToUint8Array(base64: string): Uint8Array {
+  const binaryString = atob(base64);
+  const bytes = new Uint8Array(binaryString.length);
+  for (let i = 0; i < binaryString.length; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
+  return bytes;
+}
+
+/**
+ * Convert a Uint8Array to a base64 string
+ * @param array - Uint8Array data
+ * @returns Base64 encoded string
+ */
+export function uint8ArrayToBase64(array: Uint8Array): string {
+  let binary = "";
+  const len = array.byteLength;
+  for (let i = 0; i < len; i++) {
+    binary += String.fromCharCode(array[i]);
+  }
+  return btoa(binary);
+}
+
+/**
  * Parse an image from various input types and return width, height, and base64 data
  * Supports browser and Node.js environments with various input formats
  *

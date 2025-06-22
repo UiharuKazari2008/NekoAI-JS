@@ -10,15 +10,6 @@ import {
   Sampler,
 } from "./constants";
 
-// Host related types
-export interface HostInstance {
-  url: string;
-  accept: string;
-  name: string;
-}
-
-export interface CustomHost extends HostInstance {}
-
 // User related types
 export interface User {
   token: string;
@@ -96,7 +87,7 @@ export interface ParsedImage {
  * Maps to char_caption and centers in the API
  */
 export interface CharacterCaption {
-  charCaption: string; // Will be converted to char_caption
+  char_caption: string; // Will be converted to char_caption
   centers: PositionCoords[];
 }
 
@@ -115,8 +106,8 @@ export interface CharacterPrompt {
  * Maps to base_caption and char_captions in the API
  */
 export interface V4CaptionFormat {
-  baseCaption: string; // Will be converted to base_caption
-  charCaptions: CharacterCaption[]; // Will be converted to char_captions
+  base_caption: string; // Will be converted to base_caption
+  char_captions: CharacterCaption[]; // Will be converted to char_captions
 }
 
 /**
@@ -125,8 +116,8 @@ export interface V4CaptionFormat {
  */
 export interface V4PromptFormat {
   caption: V4CaptionFormat;
-  useCoords: boolean; // Will be converted to use_coords
-  useOrder: boolean; // Will be converted to use_order
+  use_coords: boolean; // Will be converted to use_coords
+  use_order: boolean; // Will be converted to use_order
 }
 
 /**
@@ -135,84 +126,84 @@ export interface V4PromptFormat {
  */
 export interface V4NegativePromptFormat {
   caption: V4CaptionFormat;
-  legacyUc: boolean; // Will be converted to legacy_uc
+  legacy_uc: boolean; // Will be converted to legacy_uc
 }
 
 // Core metadata
 export interface Metadata {
   // General parameters
   prompt: string;
-  model?: Model;
-  action?: Action;
+  model: Model;
+  action: Action;
   resPreset?: Resolution;
 
   // Prompt settings
-  negativePrompt?: string; // Will be converted to negative_prompt
+  negative_prompt?: string; // Will be converted to negative_prompt
   qualityToggle?: boolean;
   ucPreset?: 0 | 1 | 2 | 3;
 
   // Image settings
   width?: number;
   height?: number;
-  nSamples?: number; // Will be converted to n_samples
+  n_samples?: number; // Will be converted to n_samples
 
   // AI settings
   steps?: number;
   scale?: number;
-  dynamicThresholding?: boolean; // Will be converted to dynamic_thresholding
+  dynamic_thresholding?: boolean; // Will be converted to dynamic_thresholding
   seed?: number;
-  extraNoiseSeed?: number; // Will be converted to extra_noise_seed
+  extra_noise_seed?: number; // Will be converted to extra_noise_seed
   sampler?: Sampler;
   sm?: boolean;
-  smDyn?: boolean; // Will be converted to sm_dyn
-  cfgRescale?: number; // Will be converted to cfg_rescale
-  noiseSchedule?: Noise; // Will be converted to noise_schedule
+  sm_dyn?: boolean; // Will be converted to sm_dyn
+  cfg_rescale?: number; // Will be converted to cfg_rescale
+  noise_schedule?: Noise; // Will be converted to noise_schedule
 
   // img2img settings
   image?: string;
   strength?: number;
   noise?: number;
-  controlnetStrength?: number; // Will be converted to controlnet_strength
-  controlnetCondition?: string; // Will be converted to controlnet_condition
-  controlnetModel?: Controlnet; // Will be converted to controlnet_model
+  controlnet_strength?: number; // Will be converted to controlnet_strength
+  controlnet_condition?: string; // Will be converted to controlnet_condition
+  controlnet_model?: Controlnet; // Will be converted to controlnet_model
 
   // Inpaint settings
-  addOriginalImage?: boolean; // Will be converted to add_original_image
+  add_original_image?: boolean; // Will be converted to add_original_image
   mask?: string;
 
   // Vibe Transfer settings
-  referenceImageMultiple?: string[]; // Will be converted to reference_image_multiple
-  referenceInformationExtractedMultiple?: number[]; // Will be converted to reference_information_extracted_multiple
-  referenceStrengthMultiple?: number[]; // Will be converted to reference_strength_multiple
+  reference_image_multiple?: string[]; // Will be converted to reference_image_multiple
+  reference_information_extracted_multiple?: number[]; // Will be converted to reference_information_extracted_multiple
+  reference_strength_multiple?: number[]; // Will be converted to reference_strength_multiple
 
   // V4/V4.5 specific settings
-  paramsVersion?: 1 | 2 | 3; // Will be converted to params_version
+  params_version?: 1 | 2 | 3; // Will be converted to params_version
   autoSmea?: boolean;
   characterPrompts?: CharacterPrompt[];
-  v4Prompt?: V4PromptFormat; // Will be converted to v4_prompt
-  v4NegativePrompt?: V4NegativePromptFormat; // Will be converted to v4_negative_prompt
-  skipCfgAboveSigma?: number | null; // Will be converted to skip_cfg_above_sigma
-  useCoords?: boolean; // Will be converted to use_coords
-  legacyUc?: boolean; // Will be converted to legacy_uc
-  normalizeReferenceStrengthMultiple?: boolean; // Will be converted to normalize_reference_strength_multiple
-  deliberateEulerAncestralBug?: boolean; // Will be converted to deliberate_euler_ancestral_bug
-  preferBrownian?: boolean; // Will be converted to prefer_brownian
+
+  v4_prompt?: V4PromptFormat; // Will be converted to v4_prompt
+  v4_negative_prompt?: V4NegativePromptFormat; // Will be converted to v4_negative_prompt
+  skip_cfg_above_sigma?: number | null; // Will be converted to skip_cfg_above_sigma
+  use_coords?: boolean; // Will be converted to use_coords
+  legacy_uc?: boolean; // Will be converted to legacy_uc
+  normalize_reference_strength_multiple?: boolean; // Will be converted to normalize_reference_strength_multiple
+  deliberate_euler_ancestral_bug?: boolean; // Will be converted to deliberate_euler_ancestral_bug
+  prefer_brownian?: boolean; // Will be converted to prefer_brownian
 
   // V4.5 specific settings
   inpaintImg2ImgStrength?: number; // Will be converted to inpaint_img2img_strength, default to 1
 
   // Misc settings
   legacy?: boolean;
-  legacyV3Extend?: boolean; // Will be converted to legacy_v3_extend
+  legacy_v3_extend?: boolean; // Will be converted to legacy_v3_extend
 
-
+  stream?: string | null; // Whether to stream the response
 }
 
 // Image related types
 export interface ImageOptions {
   filename: string;
   data: Uint8Array;
-  metadata?: Metadata;
 }
 
 // Director Tools options
@@ -262,8 +253,10 @@ export type DirectorRequest =
 
 export interface NovelAIOptions {
   token: string;
+  host?: Host;
   timeout?: number;
   retry?: RetryConfig;
+  verbose?: boolean;
 }
 
 // API response types

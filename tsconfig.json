@@ -11,6 +11,6 @@
     "skipLibCheck": true,
     "lib": ["ES2020", "DOM"]
   },
-  "include": ["src/**/*", "utils.ts"],
+  "include": ["src/**/*"],
   "exclude": ["node_modules", "dist", "**/*.test.ts"]
 }

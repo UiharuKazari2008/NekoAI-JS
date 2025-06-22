@@ -18,6 +18,10 @@
 >
 > Built with modern JavaScript/TypeScript features for both browser and Node.js environments, it provides full access to NovelAI's latest models (V3, V4, V4.5) and Director tools while maintaining a clean interface. This project is based on the [NekoAI-API](https://github.com/Nya-Foundation/NekoAI-API) Python package.
 
+### 📄 License Change Notice
+
+> **Important**: This project has transitioned from MIT to **AGPL-3.0** license to ensure better compliance and alignment with our inspiration source. As this work builds significantly upon concepts and approaches from NekoAI-API, we've adopted a more appropriate license that better reflects the collaborative nature of open-source development and provides stronger copyleft protections for the community.
+
 ## 🌟 Core Capabilities
 
 | Feature                     | Description                                                                                            |
@@ -25,13 +29,12 @@
 | 🚀 **Lightweight**          | Focuses on image generation and Director tools, providing a simple and easy-to-use interface.          |
 | ⚙️ **Parameterized**        | Provides strongly typed interfaces to easily set up generation parameters with validation.             |
 | 🔑 **Token Authentication** | Supports direct token authentication for API access.                                                   |
+| 🎬 **Real-time Streaming**  | Stream V4/V4.5 generation progress in real-time, watching each denoising step as it happens.           |
 | 🌐 **Cross-Platform**       | Works in both browser and Node.js environments.                                                        |
 | ✨ **Latest Models**        | Full support for V3, V4, and V4.5 models including multi-character generation.                         |
 | 🛠️ **Director Tools**       | Complete support for all NovelAI Director tools like line art, background removal, and emotion change. |
 | 🔄 **TypeScript Support**   | Full TypeScript definitions for all API parameters and responses.                                      |
-| 🖼️ **Flexible Image Input** | Accepts various image input formats (paths, URLs, Blob, File, ArrayBuffer) for cross-platform use.     |
 | 🔁 **Automatic Retries**    | Built-in retry mechanism for handling rate limits and temporary API failures.                          |
-| 📦 **Modular Structure**    | Well-organized, domain-specific modules for better maintainability and code organization.              |
 
 ## 📦 Installation
 
@@ -97,7 +100,7 @@ const images = await client.generateImage({
   prompt: "1girl, cute, anime style, detailed",
   model: Model.V4_5_CUR,
   resPreset: Resolution.NORMAL_PORTRAIT,
-  nSamples: 1,
+  n_samples: 1,
   seed: 1234567890, // Fixed seed for reproducibility
 });
 

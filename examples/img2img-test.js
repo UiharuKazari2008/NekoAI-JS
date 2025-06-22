@@ -6,6 +6,7 @@ require("dotenv").config();
 async function testImg2Img() {
   const client = new NovelAI({
     token: process.env.NOVELAI_TOKEN,
+    verbose: true,
   });
 
   console.log("Testing img2img generation...");
@@ -36,13 +37,13 @@ async function testImg2Img() {
         action: Action.IMG2IMG,
         width: dimensions.width,
         height: dimensions.height,
-        nSamples: 1,
+        n_samples: 1,
         steps: 28,
         scale: 7.0,
         sampler: Sampler.DPM2S_ANC,
-        dynamicThresholding: false,
-        cfgRescale: 0,
-        noiseSchedule: Noise.KARRAS,
+        dynamic_thresholding: false,
+        cfg_rescale: 0,
+        noise_schedule: Noise.KARRAS,
         seed: Math.floor(Math.random() * 4294967288),
         ucPreset: 0,
         qualityToggle: true,
@@ -52,7 +53,7 @@ async function testImg2Img() {
         strength: 0.7, // How much to change the image (0.01-0.99)
         noise: 0.2, // How much noise to add
 
-        negativePrompt:
+        negative_prompt:
           "nsfw, lowres, bad anatomy, bad hands, text, error, missing fingers, extra digit",
       },
       undefined,

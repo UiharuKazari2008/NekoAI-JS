@@ -5,6 +5,7 @@ require("dotenv").config();
 async function testModelV4() {
   const client = new NovelAI({
     token: process.env.NOVELAI_TOKEN,
+    verbose: true,
   });
 
   console.log("Testing Model V4 generation...");
@@ -15,13 +16,13 @@ async function testModelV4() {
         prompt: "1girl, blue hair, cute, anime style",
         model: Model.V4,
         resPreset: Resolution.NORMAL_PORTRAIT,
-        nSamples: 1,
+        n_samples: 1,
         steps: 28,
         scale: 5.5,
         sampler: Sampler.EULER_ANC,
-        noiseSchedule: Noise.KARRAS,
+        noise_schedule: Noise.KARRAS,
         ucPreset: 1,
-        negativePrompt:
+        negative_prompt:
           "nsfw, lowres, bad anatomy, bad hands, text, error, missing fingers, extra digit",
       },
       undefined,

@@ -6,6 +6,7 @@ require("dotenv").config();
 async function testInpaint() {
   const client = new NovelAI({
     token: process.env.NOVELAI_TOKEN,
+    verbose: true,
   });
 
   return; // Disable inpainting test for now
@@ -42,24 +43,24 @@ async function testInpaint() {
         action: Action.INPAINT,
         width: dimensions.width,
         height: dimensions.height,
-        nSamples: 1,
+        n_samples: 1,
         steps: 28,
         scale: 7.0,
         sampler: Sampler.EULER,
-        dynamicThresholding: false,
-        cfgRescale: 0,
-        noiseSchedule: Noise.KARRAS,
+        dynamic_thresholding: false,
+        cfg_rescale: 0,
+        noise_schedule: Noise.KARRAS,
         seed: Math.floor(Math.random() * 4294967288),
-        extraNoiseSeed: Math.floor(Math.random() * 4294967288),
+        extra_noise_seed: Math.floor(Math.random() * 4294967288),
         ucPreset: 0,
         qualityToggle: true,
 
         // inpaint specific parameters
         image: base64Image,
         mask: base64Mask,
-        addOriginalImage: true, // Overlay the original image
+        add_original_image: true, // Overlay the original image
 
-        negativePrompt:
+        negative_prompt:
           "nsfw, lowres, bad anatomy, bad hands, text, error, missing fingers, extra digit",
       },
       undefined,

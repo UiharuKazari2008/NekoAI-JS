@@ -1,9 +1,5 @@
+import { Metadata } from "../types";
 import { Action, Model } from "../constants";
-import { CharacterPrompt, Metadata } from "../types";
-import {
-  camelToSnakeCase,
-  convertObjectKeysToSnakeCase,
-} from "./convert-utils";
 
 /**
  * Prepares metadata for API request
@@ -11,187 +7,28 @@ import {
  * @returns Formatted API request payload
  */
 export function prepareMetadataForApi(metadata: Metadata): any {
-  // Handle default parameters
-  const model = metadata.model || Model.V3;
-  const action = metadata.action || Action.GENERATE;
+  // Create a copy of metadata and remove undefined values (keep null)
+  const params = JSON.parse(
+    JSON.stringify(metadata, (key, value) => {
+      return value === undefined ? undefined : value;
+    }),
+  );
 
-  // Copy metadata object without reserved properties
-  const {
-    prompt,
-    model: _,
-    action: __,
-    resPreset: ___,
-    ...parameters
-  } = metadata;
-
-  // Create formatted parameters object matching NovelAI's expected format
-  const formattedParams: Record<string, any> = {};
-
-  // Fields that should remain in camelCase format, unchanged by conversion
-  const camelCaseFields = [
-    "ucPreset",
-    "qualityToggle",
-    "autoSmea",
-    "characterPrompts",
-    "v4_prompt",
-    "v4_negative_prompt",
-    "inpaintImg2ImgStrength",
-  ];
-
-  // Process all parameters
-  Object.entries(parameters).forEach(([key, value]) => {
-    try {
-      // Skip undefined values
-      if (value === undefined) return;
-
-      // Handle special nested objects
-      if (key === "v4Prompt") {
-        const convertedPrompt = convertV4Prompt(value);
-        if (convertedPrompt) {
-          formattedParams.v4_prompt = convertedPrompt;
-        }
-        return;
-      }
-
-      if (key === "v4NegativePrompt") {
-        const convertedNegPrompt = convertV4NegativePrompt(value);
-        if (convertedNegPrompt) {
-          formattedParams.v4_negative_prompt = convertedNegPrompt;
-        }
-        return;
-      }
-
-      if (key === "characterPrompts" && Array.isArray(value)) {
-        formattedParams.characterPrompts = convertCharacterPrompts(value);
-        return;
-      }
-
-      // Determine if this field should be in camelCase or snake_case
-      const targetKey = camelCaseFields.includes(key)
-        ? key
-        : camelToSnakeCase(key);
-
-      // Handle nested objects recursively
-      if (
-        value !== null &&
-        typeof value === "object" &&
-        !Array.isArray(value)
-      ) {
-        formattedParams[targetKey] = convertObjectKeysToSnakeCase(
-          value,
-          camelCaseFields,
-        );
-      } else {
-        formattedParams[targetKey] = value;
-      }
-    } catch (error) {
-      console.error(`Error processing metadata field "${key}":`, error);
-      // Still include the value even if conversion failed
-      const targetKey = camelCaseFields.includes(key)
-        ? key
-        : camelToSnakeCase(key);
-      formattedParams[targetKey] = value;
-    }
-  });
+  // Remove model, action, and prompt from parameters since they go in the top level
+  delete params.model;
+  delete params.action;
+  delete params.prompt;
+  delete params.resPreset;
 
   // Create the payload
   const payload: any = {
     input: metadata.prompt,
-    model,
-    action,
-    parameters: formattedParams,
+    model: metadata.model,
+    action: metadata.action,
+    parameters: params,
   };
 
   return payload;
-}
-
-/**
- * Converts V4Prompt structure to the format expected by the API
- *
- * @param v4Prompt - The V4Prompt object to convert
- * @returns Converted object in the format expected by the API
- */
-export function convertV4Prompt(v4Prompt: any): any {
-  if (!v4Prompt) return undefined;
-
-  // Convert the structure according to the expected API format
-  // Special handling for the nested structure
-  const result = {
-    caption: {
-      base_caption: v4Prompt.caption?.baseCaption || "",
-      char_captions: [],
-    },
-    use_coords: v4Prompt.useCoords || false,
-    use_order: v4Prompt.useOrder || true,
-  };
-
-  // Handle character captions
-  if (
-    v4Prompt.caption?.charCaptions &&
-    Array.isArray(v4Prompt.caption.charCaptions)
-  ) {
-    result.caption.char_captions = v4Prompt.caption.charCaptions.map(
-      (charCaption: any) => ({
-        char_caption: charCaption.charCaption || "",
-        centers: charCaption.centers || [],
-      }),
-    );
-  }
-
-  return result;
-}
-
-/**
- * Converts V4NegativePrompt structure to the format expected by the API
- *
- * @param v4NegativePrompt - The V4NegativePrompt object to convert
- * @returns Converted object in the format expected by the API
- */
-export function convertV4NegativePrompt(v4NegativePrompt: any): any {
-  if (!v4NegativePrompt) return undefined;
-
-  // Convert the structure according to the expected API format
-  // Special handling for the nested structure
-  const result = {
-    caption: {
-      base_caption: v4NegativePrompt.caption?.baseCaption || "",
-      char_captions: [],
-    },
-    legacy_uc: v4NegativePrompt.legacyUc || false,
-  };
-
-  // Handle character captions
-  if (
-    v4NegativePrompt.caption?.charCaptions &&
-    Array.isArray(v4NegativePrompt.caption.charCaptions)
-  ) {
-    result.caption.char_captions = v4NegativePrompt.caption.charCaptions.map(
-      (charCaption: any) => ({
-        char_caption: charCaption.charCaption || "",
-        centers: charCaption.centers || [],
-      }),
-    );
-  }
-
-  return result;
-}
-
-/**
- * Converts CharacterPrompts array to the format expected by the API
- *
- * @param characterPrompts - The array of CharacterPrompt objects to convert
- * @returns Converted array in the format expected by the API
- */
-export function convertCharacterPrompts(characterPrompts: any[]): any[] {
-  if (!characterPrompts || !Array.isArray(characterPrompts)) return [];
-
-  // Character prompts fields that should remain in camelCase
-  const camelCaseFields = ["prompt", "uc", "enabled"];
-
-  // Convert each CharacterPrompt object to snake_case recursively while preserving camelCase fields
-  return characterPrompts.map((prompt) =>
-    convertObjectKeysToSnakeCase(prompt, camelCaseFields),
-  );
 }
 
 /**
@@ -202,7 +39,7 @@ export function convertCharacterPrompts(characterPrompts: any[]): any[] {
  */
 export function calculateCost(metadata: Metadata, isOpus = false): number {
   const steps = metadata.steps || 28;
-  const nSamples = metadata.nSamples || 1;
+  const n_samples = metadata.n_samples || 1;
   const width = metadata.width || 1024;
   const height = metadata.height || 1024;
   const strength =
@@ -223,7 +60,7 @@ export function calculateCost(metadata: Metadata, isOpus = false): number {
     }
   } else {
     // V3 uses sm/sm_dyn
-    if (metadata.smDyn) {
+    if (metadata.sm_dyn) {
       smeaFactor = 1.4;
     } else if (metadata.sm) {
       smeaFactor = 1.2;
@@ -249,5 +86,5 @@ export function calculateCost(metadata: Metadata, isOpus = false): number {
   const opusDiscount =
     isOpus && steps <= 28 && adjustedResolution <= 1024 * 1024;
 
-  return perSample * (nSamples - (opusDiscount ? 1 : 0));
+  return perSample * (n_samples - (opusDiscount ? 1 : 0));
 }

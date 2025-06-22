@@ -2,17 +2,15 @@ import JSZip from "jszip";
 import {
   HEADERS,
   Host,
-  HOST_INSTANCES,
   Endpoint,
   DirectorTools,
   EmotionOptions,
   EmotionLevel,
-  Model,
+  isV4Model,
 } from "./constants";
-import { Image } from "./image";
+import { Image, MsgpackEvent, EventType } from "./image";
 import {
   DirectorRequest,
-  HostInstance,
   ImageInput,
   Metadata,
   NovelAIOptions,
@@ -26,6 +24,9 @@ import {
   parseImage,
   prepareMetadataForApi,
   withRetry,
+  prepHeaders,
+  StreamingMsgpackParser,
+  parseMsgpackEvents,
 } from "./utils";
 import { metadataProcessor } from "./metadata";
 
@@ -34,9 +35,12 @@ import { metadataProcessor } from "./metadata";
  */
 export class NovelAI {
   private token: string;
+  private host: Host;
   private timeout: number;
-  private headers: Record<string, string>;
   private retryConfig?: RetryConfig;
+
+  private verbose: boolean = false;
+  private headers: Record<string, string>;
 
   /**
    * Cache of vibe tokens to avoid re-encoding the same images
@@ -49,13 +53,18 @@ export class NovelAI {
    *
    * @param options - Client configuration options
    * @param options.token - NovelAI access token
+   * @param options.host - API host to use (default: Host.WEB)
    * @param options.timeout - Request timeout in milliseconds (default: 30000)
    * @param options.retry - Configuration for request retries (default: enabled with 3 retries)
+   * @param options.verbose - Whether to log additional information (default: false)
+  
    */
   constructor(options: NovelAIOptions) {
     this.token = options.token;
+    this.host = options.host || Host.WEB;
     this.timeout = options.timeout || 30000;
     this.retryConfig = options.retry;
+    this.verbose = options.verbose || false;
 
     // Set up default headers
     this.headers = {
@@ -68,58 +77,42 @@ export class NovelAI {
    * Generate images using NovelAI's API
    *
    * @param metadata - Generation parameters
-   * @param host - API host to use (can be Host enum or HostInstance, default: WEB)
-   * @param verbose - Whether to log cost information (default: false)
+   * @param stream - Whether to stream intermediate steps for V4 models (default: false)
    * @param isOpus - Whether the user has Opus subscription (for cost calculation, default: false)
-   * @returns Promise resolving to an array of Image objects
+   * @returns Promise resolving to an array of Image objects or AsyncGenerator of MsgpackEvent objects
    */
   async generateImage(
     metadata: Metadata,
-    host: Host | HostInstance = Host.WEB,
-    verbose: boolean = false,
+    stream: boolean = false,
     isOpus: boolean = false,
-  ): Promise<Image[]> {
+  ): Promise<Image[] | AsyncGenerator<MsgpackEvent, void, unknown>> {
     // Process and validate the metadata
     const processedMetadata = this.processMetadata(metadata);
 
     // Calculate and log cost if verbose
-    if (verbose) {
+    if (this.verbose) {
       const cost = calculateCost(processedMetadata, isOpus);
       console.info(`Generating image... estimated Anlas cost: ${cost}`);
     }
 
     // Handle vibe transfer for V4 models
-    await this.encodeVibe(processedMetadata, host);
-
-    // Get host instance details
-    const hostInstance =
-      typeof host === "string" ? HOST_INSTANCES[host as Host] : host;
+    await this.encodeVibe(processedMetadata);
 
     // Prepare the API request payload
     const payload = prepareMetadataForApi(processedMetadata);
 
     return withRetry(async () => {
-      try {
-        // Make the API request with timeout handling
-        const response = await this.makeRequest(
-          `${hostInstance.url}${Endpoint.IMAGE}`,
-          payload,
-          hostInstance.accept,
-        );
+      const isV4 =
+        processedMetadata.model && isV4Model(processedMetadata.model);
 
-        // Process the response into Image objects
-        return this.processImageResponse(
-          response,
-          hostInstance,
-          processedMetadata,
-        );
-      } catch (error) {
-        if ((error as any).name === "AbortError") {
-          throw new Error(
-            "Request timed out, please try again. If the problem persists, consider setting a higher 'timeout' value when initiating the NovelAI client.",
-          );
-        }
-        throw error;
+      if (isV4) {
+        // V4 models use streaming msgpack endpoint
+        return stream
+          ? this.streamV4Events(payload)
+          : this.processV4Response(payload);
+      } else {
+        // V3 models use regular ZIP endpoint
+        return this.processV3Response(payload);
       }
     }, this.retryConfig);
   }
@@ -129,41 +122,37 @@ export class NovelAI {
    *
    * @param url - The endpoint URL to send the request to
    * @param payload - The request payload
-   * @param acceptHeader - The Accept header value for the response
    * @returns Promise resolving to the API response
    * @private
    */
   private async makeRequest(
     url: string,
     payload: any,
-    acceptHeader: string,
   ): Promise<NovelAIResponse> {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), this.timeout);
 
     const jsonPayload = JSON.stringify(payload);
-    
+    const headers = prepHeaders(this.headers);
+
+    if (this.verbose) {
+      console.log(`[Headers] for image generation:`, headers);
+      console.info(`[Payload] for image generation:`, jsonPayload);
+    }
+
+    // process.exit(-1);
+
     try {
       // Make the API request
       const response = await fetch(url, {
         method: "POST",
-        headers: {
-          ...this.headers,
-          Accept: acceptHeader,
-        },
+        headers: headers,
         body: jsonPayload,
         signal: controller.signal,
       });
 
       // Handle the response
       const apiResponse = await handleResponse(response);
-
-      // Ensure we got the expected content type
-      if (response.headers.get("Content-Type") !== acceptHeader) {
-        throw new Error(
-          `Invalid response content type. Expected '${acceptHeader}', got '${response.headers.get("Content-Type")}'.`,
-        );
-      }
 
       return apiResponse;
     } finally {
@@ -172,61 +161,144 @@ export class NovelAI {
   }
 
   /**
-   * Processes the API response into Image objects
+   * Process V3 model response (ZIP format)
    *
-   * @param apiResponse - The API response to process
-   * @param hostInstance - The host instance used for the request
-   * @param metadata - The metadata to include with the images
+   * @param payload - The request payload
    * @returns Promise resolving to an array of Image objects
    * @private
    */
-  private async processImageResponse(
-    apiResponse: NovelAIResponse,
-    hostInstance: HostInstance,
-    metadata: Metadata,
-  ): Promise<Image[]> {
-    // Get host name for filename
-    const hostName = hostInstance.name.toLowerCase();
-
-    // Use the data directly if it's already an ArrayBuffer, otherwise get it from the stream
-    let arrayBuffer: ArrayBuffer;
-    if (apiResponse.data instanceof ArrayBuffer) {
-      arrayBuffer = apiResponse.data;
-    } else if (apiResponse.data) {
-      arrayBuffer = await new Response(apiResponse.data).arrayBuffer();
-    } else {
-      throw new Error("No data received from API");
+  private async processV3Response(payload: any): Promise<Image[]> {
+    try {
+      const response = await this.makeRequest(
+        `${this.host}${Endpoint.IMAGE}`,
+        payload,
+      );
+      return this.extractImagesFromZip(response);
+    } catch (error) {
+      throw this.handleRequestError(error);
     }
+  }
 
-    // Load and process the ZIP file
+  /**
+   * Process V4 model response (msgpack format)
+   *
+   * @param payload - The request payload
+   * @returns Promise resolving to an array of Image objects
+   * @private
+   */
+  private async processV4Response(payload: any): Promise<Image[]> {
+    try {
+      const response = await this.makeRequest(
+        `${this.host}${Endpoint.IMAGE_STREAM}`,
+        payload,
+      );
+      return this.extractImagesFromMsgpack(response);
+    } catch (error) {
+      throw this.handleRequestError(error);
+    }
+  }
+
+  /**
+   * Extract images from ZIP response (V3 models)
+   *
+   * @param apiResponse - The API response containing ZIP data
+   * @returns Promise resolving to an array of Image objects
+   * @private
+   */
+  private async extractImagesFromZip(
+    apiResponse: NovelAIResponse,
+  ): Promise<Image[]> {
+    const arrayBuffer = await this.getResponseBuffer(apiResponse);
     const zip = await JSZip.loadAsync(arrayBuffer);
     const images: Image[] = [];
+    const hostName = this.host.toLowerCase();
     let index = 0;
 
-    // Extract each file from the ZIP
     for (const filename of Object.keys(zip.files)) {
       const zipObj = zip.files[filename];
       if (!zipObj.dir) {
         const data = await zipObj.async("uint8array");
-        const timestamp = new Date()
-          .toISOString()
-          .replace(/[-:]/g, "")
-          .replace("T", "_")
-          .substring(0, 15);
+        const timestamp = this.generateTimestamp();
 
         images.push(
           new Image({
             filename: `${timestamp}_${hostName}_p${index}.png`,
             data: data,
-            metadata: metadata,
           }),
         );
-
         index++;
       }
     }
 
     return images;
+  }
+
+  /**
+   * Extract images from msgpack response (V4 models)
+   *
+   * @param apiResponse - The API response containing msgpack data
+   * @returns Promise resolving to an array of Image objects
+   * @private
+   */
+  private async extractImagesFromMsgpack(
+    apiResponse: NovelAIResponse,
+  ): Promise<Image[]> {
+    const arrayBuffer = await this.getResponseBuffer(apiResponse);
+    const msgpackData = new Uint8Array(arrayBuffer);
+    const events = parseMsgpackEvents(msgpackData);
+
+    return events
+      .filter((event) => event.event_type === EventType.FINAL)
+      .map((event) => event.image);
+  }
+
+  /**
+   * Get response data as ArrayBuffer
+   *
+   * @param apiResponse - The API response
+   * @returns Promise resolving to ArrayBuffer
+   * @private
+   */
+  private async getResponseBuffer(
+    apiResponse: NovelAIResponse,
+  ): Promise<ArrayBuffer> {
+    if (apiResponse.data instanceof ArrayBuffer) {
+      return apiResponse.data;
+    } else if (apiResponse.data) {
+      return await new Response(apiResponse.data).arrayBuffer();
+    } else {
+      throw new Error("No data received from API");
+    }
+  }
+
+  /**
+   * Generate timestamp for filename
+   *
+   * @returns Formatted timestamp string
+   * @private
+   */
+  private generateTimestamp(): string {
+    return new Date()
+      .toISOString()
+      .replace(/[-:]/g, "")
+      .replace("T", "_")
+      .substring(0, 15);
+  }
+
+  /**
+   * Handle request errors with proper timeout detection
+   *
+   * @param error - The error to handle
+   * @returns Formatted error
+   * @private
+   */
+  private handleRequestError(error: any): Error {
+    if (error.name === "AbortError") {
+      return new Error(
+        "Request timed out, please try again. If the problem persists, consider setting a higher 'timeout' value when initiating the NovelAI client.",
+      );
+    }
+    return error;
   }
 
   /**
@@ -244,242 +316,134 @@ export class NovelAI {
    * Use a Director tool with the specified request
    *
    * @param request - Director tool request
-   * @param host - Host to use for the request (can be Host enum or HostInstance, default: WEB)
    * @returns Promise resolving to an Image object
    */
-  async useDirectorTool(
-    request: DirectorRequest,
-    host: Host | HostInstance = Host.WEB,
-  ): Promise<Image> {
-    const hostInstance =
-      typeof host === "string" ? HOST_INSTANCES[host as Host] : host;
-
+  async useDirectorTool(request: DirectorRequest): Promise<Image> {
     return withRetry(async () => {
       try {
-        // Set up AbortController for timeout
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), this.timeout);
+        const response = await this.makeRequest(
+          `${this.host}${Endpoint.DIRECTOR}`,
+          request,
+        );
+
+        if (!response.data) {
+          throw new Error("Received empty response from the server.");
+        }
+
+        // Try to extract as ZIP first, fallback to raw data
+        const arrayBuffer = await this.getResponseBuffer(response);
+        let data: Uint8Array;
 
         try {
-          // Make the API request
-          const response = await fetch(
-            `${hostInstance.url}${Endpoint.DIRECTOR}`,
-            {
-              method: "POST",
-              headers: this.headers,
-              body: JSON.stringify(request),
-              signal: controller.signal,
-            },
-          );
-
-          // Clear the timeout
-          clearTimeout(timeoutId);
-
-          // Handle the response
-          const apiResponse = await handleResponse(response);
-
-          if (!apiResponse.data) {
-            throw new Error("Received empty response from the server.");
-          }
-
-          // Process the response data
-          let arrayBuffer;
-          if (apiResponse.data instanceof ArrayBuffer) {
-            arrayBuffer = apiResponse.data;
-          } else if (apiResponse.data) {
-            arrayBuffer = await new Response(apiResponse.data).arrayBuffer();
-          } else {
-            throw new Error("No data received from API");
-          }
-
-          // Handle decompression of the ZIP file
-          const data = await this.handleDirectorDecompression(arrayBuffer);
-
-          // Create and return the image
-          return new Image({
-            filename: createFilename(request.req_type),
-            data,
-          });
-        } finally {
-          clearTimeout(timeoutId);
+          // Director tools return ZIP files, so we can reuse extractImagesFromZip
+          const images = await this.extractImagesFromZip(response);
+          // Director tools typically return a single image, so take the first one
+          data = images[0]?.data || new Uint8Array(arrayBuffer);
+        } catch (error) {
+          // If ZIP extraction fails, treat as raw image data
+          data = new Uint8Array(arrayBuffer);
         }
+
+        return new Image({
+          filename: createFilename(request.req_type),
+          data,
+        });
       } catch (error) {
-        if ((error as any).name === "AbortError") {
-          throw new Error(
-            "Request timed out, please try again. If the problem persists, consider setting a higher 'timeout' value when initiating the NovelAI client.",
-          );
-        }
-        throw error;
+        throw this.handleRequestError(error);
       }
     }, this.retryConfig);
   }
 
   /**
-   * Handle decompression of ZIP response from Director API
+   * Create a director tool request with common parameters
    *
-   * @param compressedData - Compressed ZIP data as ArrayBuffer
-   * @returns Promise resolving to decompressed Uint8Array image data
+   * @param image - Image input
+   * @param reqType - Director tool type
+   * @param additionalParams - Additional parameters for the request
+   * @returns Promise resolving to an Image object
    * @private
    */
-  private async handleDirectorDecompression(
-    compressedData: ArrayBuffer,
-  ): Promise<Uint8Array> {
-    try {
-      // Load the ZIP file using JSZip
-      const zip = await JSZip.loadAsync(compressedData);
+  private async createDirectorRequest(
+    image: ImageInput,
+    reqType: DirectorTools,
+    additionalParams: Record<string, any> = {},
+  ): Promise<Image> {
+    const parsedImage = await parseImage(image);
 
-      // Get the list of files in the ZIP
-      const fileNames = Object.keys(zip.files);
+    const request: any = {
+      req_type: reqType,
+      width: parsedImage.width,
+      height: parsedImage.height,
+      image: parsedImage.base64,
+      ...additionalParams,
+    };
 
-      if (fileNames.length === 0) {
-        throw new Error("ZIP file is empty or invalid");
-      }
-
-      // Extract the first file (Director tools typically return a single image)
-      const firstFileName = fileNames[0];
-      const fileData = await zip.file(firstFileName)?.async("uint8array");
-
-      if (!fileData) {
-        throw new Error(`Failed to extract file ${firstFileName} from ZIP`);
-      }
-
-      return fileData;
-    } catch (error) {
-      // If not a valid ZIP or only contains a single uncompressed image,
-      // return the raw data as-is
-      if (
-        error instanceof Error &&
-        (error.message.includes("invalid zip") ||
-          error.message.includes("Central Directory header not found"))
-      ) {
-        return new Uint8Array(compressedData);
-      }
-
-      // Re-throw other errors
-      throw error;
-    }
+    return this.useDirectorTool(request);
   }
 
   /**
    * Convert an image to line art
    *
    * @param image - Image input (path, Blob, File, URL, etc.)
-   * @param host - Host to use for the request (optional)
    * @returns Promise resolving to an Image object
    */
-  async lineArt(image: ImageInput, host?: Host | HostInstance): Promise<Image> {
-    const parsedImage = await parseImage(image);
-
-    const request: DirectorRequest = {
-      req_type: DirectorTools.LINEART,
-      width: parsedImage.width,
-      height: parsedImage.height,
-      image: parsedImage.base64,
-    };
-
-    return this.useDirectorTool(request, host);
+  async lineArt(image: ImageInput): Promise<Image> {
+    return this.createDirectorRequest(image, DirectorTools.LINEART);
   }
 
   /**
    * Convert an image to sketch
    *
    * @param image - Image input (path, Blob, File, URL, etc.)
-   * @param host - Host to use for the request (optional)
    * @returns Promise resolving to an Image object
    */
-  async sketch(image: ImageInput, host?: Host | HostInstance): Promise<Image> {
-    const parsedImage = await parseImage(image);
-
-    const request: DirectorRequest = {
-      req_type: DirectorTools.SKETCH,
-      width: parsedImage.width,
-      height: parsedImage.height,
-      image: parsedImage.base64,
-    };
-
-    return this.useDirectorTool(request, host);
+  async sketch(image: ImageInput): Promise<Image> {
+    return this.createDirectorRequest(image, DirectorTools.SKETCH);
   }
 
   /**
    * Remove the background from an image
    *
    * @param image - Image input (path, Blob, File, URL, etc.)
-   * @param host - Host to use for the request (optional)
    * @returns Promise resolving to an Image object
    */
-  async backgroundRemoval(
-    image: ImageInput,
-    host?: Host | HostInstance,
-  ): Promise<Image> {
-    const parsedImage = await parseImage(image);
-
-    const request: DirectorRequest = {
-      req_type: DirectorTools.BACKGROUND_REMOVAL,
-      width: parsedImage.width,
-      height: parsedImage.height,
-      image: parsedImage.base64,
-    };
-
-    return this.useDirectorTool(request, host);
+  async backgroundRemoval(image: ImageInput): Promise<Image> {
+    return this.createDirectorRequest(image, DirectorTools.BACKGROUND_REMOVAL);
   }
 
   /**
    * Declutter an image (remove noise, distractions, etc.)
    *
    * @param image - Image input (path, Blob, File, URL, etc.)
-   * @param host - Host to use for the request (optional)
    * @returns Promise resolving to an Image object
    */
-  async declutter(
-    image: ImageInput,
-    host?: Host | HostInstance,
-  ): Promise<Image> {
-    const parsedImage = await parseImage(image);
-
-    const request: DirectorRequest = {
-      req_type: DirectorTools.DECLUTTER,
-      width: parsedImage.width,
-      height: parsedImage.height,
-      image: parsedImage.base64,
-    };
-
-    return this.useDirectorTool(request, host);
+  async declutter(image: ImageInput): Promise<Image> {
+    return this.createDirectorRequest(image, DirectorTools.DECLUTTER);
   }
 
   /**
    * Colorize a sketch or line art
    *
    * @param image - Image input (path, Blob, File, URL, etc.)
-   * @param host - Host to use for the request (optional)
    * @param prompt - Additional prompt to add to the request
    * @param defry - Defry value (0-5, default: 0)
    * @returns Promise resolving to an Image object
    */
   async colorize(
     image: ImageInput,
-    host?: Host | HostInstance,
     prompt: string = "",
     defry: number = 0,
   ): Promise<Image> {
-    const parsedImage = await parseImage(image);
-
-    const request: DirectorRequest = {
-      req_type: DirectorTools.COLORIZE,
-      width: parsedImage.width,
-      height: parsedImage.height,
-      image: parsedImage.base64,
+    return this.createDirectorRequest(image, DirectorTools.COLORIZE, {
       prompt,
       defry,
-    };
-
-    return this.useDirectorTool(request, host);
+    });
   }
 
   /**
    * Change the emotion of a character in an image
    *
    * @param image - Image input (path, Blob, File, URL, etc.)
-   * @param host - Host to use for the request (optional)
    * @param emotion - Target emotion to change to
    * @param prompt - Additional prompt to add to the request
    * @param emotionLevel - Level of emotion change (0-5, optional)
@@ -487,25 +451,15 @@ export class NovelAI {
    */
   async changeEmotion(
     image: ImageInput,
-    host?: Host | HostInstance,
     emotion: string = EmotionOptions.NEUTRAL,
     prompt: string = "",
     emotionLevel: EmotionLevel = EmotionLevel.NORMAL,
   ): Promise<Image> {
-    const parsedImage = await parseImage(image);
-
-    const final_prompt = `${emotion};;${prompt}`;
-
-    const request: DirectorRequest = {
-      req_type: DirectorTools.EMOTION,
-      width: parsedImage.width,
-      height: parsedImage.height,
-      image: parsedImage.base64,
-      prompt: final_prompt,
+    const finalPrompt = `${emotion};;${prompt}`;
+    return this.createDirectorRequest(image, DirectorTools.EMOTION, {
+      prompt: finalPrompt,
       defry: emotionLevel ?? EmotionLevel.NORMAL,
-    };
-
-    return this.useDirectorTool(request, host);
+    });
   }
 
   /**
@@ -516,20 +470,12 @@ export class NovelAI {
    * @returns Promise resolving when encoding is complete
    * @private
    */
-  private async encodeVibe(
-    metadata: Metadata,
-    host: Host | HostInstance = Host.WEB,
-  ): Promise<void> {
-    // Skip if model is not V4 or V4 Curated
-    const v4Models = [Model.V4, Model.V4_CUR];
-    if (!metadata.model || !v4Models.includes(metadata.model)) {
-      return;
-    }
-
-    // Skip if no reference images
+  private async encodeVibe(metadata: Metadata): Promise<void> {
+    // Skip if model is not V4 or no reference images
     if (
-      !metadata.referenceImageMultiple ||
-      metadata.referenceImageMultiple.length === 0
+      !metadata.model ||
+      !isV4Model(metadata.model) ||
+      !metadata.reference_image_multiple?.length
     ) {
       return;
     }
@@ -537,77 +483,64 @@ export class NovelAI {
     const referenceImageMultiple: string[] = [];
 
     // Process each reference image
-    for (let i = 0; i < metadata.referenceImageMultiple.length; i++) {
-      const refImage = metadata.referenceImageMultiple[i];
-
+    for (let i = 0; i < metadata.reference_image_multiple.length; i++) {
+      const refImage = metadata.reference_image_multiple[i];
       const refInfoExtracted =
-        metadata.referenceInformationExtractedMultiple &&
-        metadata.referenceInformationExtractedMultiple[i] !== undefined
-          ? metadata.referenceInformationExtractedMultiple[i]
-          : 1.0;
+        metadata.reference_information_extracted_multiple?.[i] ?? 1.0;
 
-      // Create a unique hash from the image data for caching
+      // Create cache key and check cache
       const imageHash = await this.getImageHash(refImage);
       const cacheKey = `${imageHash}:${refInfoExtracted}:${metadata.model}`;
 
-      let vibeToken: string;
+      let vibeToken = this.vibeCache.get(cacheKey);
 
-      // Check if we have this image in cache
-      if (this.vibeCache.has(cacheKey)) {
-        vibeToken = this.vibeCache.get(cacheKey)!;
-      } else {
-        // Make an API call to encode the vibe
-        const payload = {
-          image: refImage,
-          information_extracted: refInfoExtracted,
-          model: metadata.model,
-        };
-
-        // Get host instance details
-        const hostInstance =
-          typeof host === "string" ? HOST_INSTANCES[host as Host] : host;
-
-        try {
-          // Make the API request using our central request method
-          const response = await this.makeRequest(
-            `${hostInstance.url}${Endpoint.ENCODE_VIBE}`,
-            payload,
-            hostInstance.accept,
-          );
-
-          // Convert response to string
-          let vibeData: string;
-          if (response.data instanceof ArrayBuffer) {
-            vibeData = new TextDecoder().decode(response.data);
-          } else if (response.data) {
-            const buffer = await new Response(response.data).arrayBuffer();
-            vibeData = new TextDecoder().decode(buffer);
-          } else {
-            throw new Error("No vibe token data received from API");
-          }
-
-          // Cache the vibe token
-          vibeToken = vibeData;
-          this.vibeCache.set(cacheKey, vibeToken);
-        } catch (error) {
-          if ((error as any).name === "AbortError") {
-            throw new Error(
-              "Vibe encoding request timed out. If the problem persists, consider setting a higher 'timeout' value.",
-            );
-          }
-          throw error;
-        }
+      if (!vibeToken) {
+        vibeToken = await this.fetchVibeToken(
+          refImage,
+          refInfoExtracted,
+          metadata.model,
+        );
+        this.vibeCache.set(cacheKey, vibeToken);
       }
 
-      // Add both the original image and its vibe token
       referenceImageMultiple.push(vibeToken);
     }
 
-    // Update metadata with both reference images and their vibe tokens
-    metadata.referenceImageMultiple = [...referenceImageMultiple];
+    // Update metadata
+    metadata.reference_image_multiple = referenceImageMultiple;
+    metadata.reference_information_extracted_multiple = undefined;
+  }
 
-    // Clean up legacy fields
-    metadata.referenceInformationExtractedMultiple = undefined;
+  /**
+   * Fetch vibe token from API
+   *
+   * @param image - Base64 image data
+   * @param informationExtracted - Information extraction level
+   * @param model - Model being used
+   * @returns Promise resolving to vibe token
+   * @private
+   */
+  private async fetchVibeToken(
+    image: string,
+    informationExtracted: number,
+    model: string,
+  ): Promise<string> {
+    const payload = {
+      image,
+      information_extracted: informationExtracted,
+      model,
+    };
+
+    try {
+      const response = await this.makeRequest(
+        `${this.host}${Endpoint.ENCODE_VIBE}`,
+        payload,
+      );
+      const buffer = await this.getResponseBuffer(response);
+      return new TextDecoder().decode(buffer);
+    } catch (error) {
+      throw this.handleRequestError(error);
+    }
   }
 
   /**
@@ -643,6 +576,71 @@ export class NovelAI {
       } catch (e) {
         throw new Error("Failed to hash image: " + e);
       }
+    }
+  }
+
+  /**
+   * Stream V4 events in real-time as they arrive from the server
+   *
+   * @param payload - The request payload
+   * @returns AsyncGenerator yielding MsgpackEvent objects in real-time
+   * @private
+   */
+  private async *streamV4Events(
+    payload: any,
+  ): AsyncGenerator<MsgpackEvent, void, unknown> {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), this.timeout);
+
+    const jsonPayload = JSON.stringify(payload);
+    const headers = prepHeaders(this.headers);
+
+    if (this.verbose) {
+      console.log(`[Headers] for image generation:`, headers);
+      console.info(`[Payload] for image generation:`, jsonPayload);
+    }
+
+    try {
+      // Make the API request with streaming
+      const response = await fetch(`${this.host}${Endpoint.IMAGE_STREAM}`, {
+        method: "POST",
+        headers: headers,
+        body: jsonPayload,
+        signal: controller.signal,
+      });
+
+      if (!response.ok) {
+        throw new Error(
+          `HTTP Error: ${response.status} ${response.statusText}`,
+        );
+      }
+
+      if (!response.body) {
+        throw new Error("No response body available for streaming");
+      }
+      // Create a streaming msgpack parser
+      const parser = new StreamingMsgpackParser();
+
+      // Process chunks as they arrive
+      const reader = response.body.getReader();
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+
+          if (done) {
+            break;
+          }
+
+          // Feed chunk to parser and yield any complete events
+          for await (const event of parser.feedChunk(value)) {
+            yield event;
+          }
+        }
+      } finally {
+        reader.releaseLock();
+      }
+    } finally {
+      clearTimeout(timeoutId);
     }
   }
 }

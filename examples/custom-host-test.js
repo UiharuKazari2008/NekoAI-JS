@@ -1,23 +1,13 @@
-const {
-  NovelAI,
-  Model,
-  Resolution,
-  Sampler,
-  createCustomHost,
-} = require("nekoai-js");
+const { NovelAI, Model, Resolution, Sampler } = require("nekoai-js");
 
 // Test function for custom host
 async function testCustomHost() {
   const client = new NovelAI({
     token: process.env.NOVELAI_TOKEN,
+    host: "https://image.novelai.net", // Official API endpoint
+    // host: "https://your-custom-host.com", // Uncomment to use a custom host
+    verbose: true,
   });
-
-  console.log("Testing custom host...");
-
-  // Create a custom host (this example uses the official API endpoint, but you can use any compatible server)
-  const customHost = createCustomHost(
-    "https://image.novelai.net", // Custom host URL
-  );
 
   try {
     const images = await client.generateImage(
@@ -25,17 +15,17 @@ async function testCustomHost() {
         prompt: "1girl, blue hair, cute, anime style",
         model: Model.V3,
         resPreset: Resolution.NORMAL_PORTRAIT,
-        nSamples: 1,
+        n_samples: 1,
         steps: 28,
         scale: 6.0,
         sampler: Sampler.EULER,
         seed: Math.floor(Math.random() * 4294967288),
         ucPreset: 0,
         qualityToggle: true,
-        negativePrompt:
+        negative_prompt:
           "nsfw, lowres, bad anatomy, bad hands, text, error, missing fingers, extra digit",
       },
-      customHost,
+      false,
       true,
     ); // Use our custom host
 

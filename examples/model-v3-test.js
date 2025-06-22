@@ -5,6 +5,7 @@ require("dotenv").config(); // Load environment variables from .env file
 async function testModelV3() {
   const client = new NovelAI({
     token: process.env.NOVELAI_TOKEN,
+    verbose: true,
   });
 
   console.log("Testing Model V3 generation...");
@@ -15,13 +16,13 @@ async function testModelV3() {
         prompt: "1girl, blue hair, cute, anime style",
         model: Model.V3,
         resPreset: Resolution.NORMAL_PORTRAIT,
-        nSamples: 1,
+        n_samples: 1,
         steps: 28,
         scale: 6.3,
         sampler: Sampler.DPM2S_ANC,
         sm: true,
-        smDyn: true,
-        negativePrompt:
+        sm_dyn: true,
+        negative_prompt:
           "nsfw, lowres, {bad}, error, fewer, extra, missing, worst quality, jpeg artifacts, bad quality",
       },
       undefined,

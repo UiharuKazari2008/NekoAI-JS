@@ -42,7 +42,7 @@ async function browserExample() {
     const positivePrompt = metadata.entries.find(
       (e) => e.keyword === "Positive prompt",
     );
-    const negativePrompt = metadata.entries.find(
+    const negative_prompt = metadata.entries.find(
       (e) => e.keyword === "Negative prompt",
     );
     const parameters = metadata.entries.find(
@@ -52,7 +52,7 @@ async function browserExample() {
     document.getElementById("positive").textContent =
       positivePrompt?.text || "";
     document.getElementById("negative").textContent =
-      negativePrompt?.text || "";
+      negative_prompt?.text || "";
     document.getElementById("parameters").textContent = parameters?.text || "";
   }
 
@@ -106,9 +106,9 @@ async function nodeExample() {
           );
         }
 
-        if (summary.negativePrompt) {
+        if (summary.negative_prompt) {
           console.log(
-            `- Negative prompt: ${summary.negativePrompt.substring(0, 100)}...`,
+            `- Negative prompt: ${summary.negative_prompt.substring(0, 100)}...`,
           );
         }
 

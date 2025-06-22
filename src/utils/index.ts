@@ -8,7 +8,6 @@ export * from "./platform-utils";
 export * from "./fs-utils";
 export * from "./http-utils";
 export * from "./retry-utils";
-export * from "./convert-utils";
 export * from "./image-utils";
 export * from "./metadata-utils";
 export * from "./tag-utils";
@@ -22,3 +21,14 @@ export {
   type ImageMetadata,
   type ImageSummary,
 } from "./parse-utils";
+
+export {
+  generateXCorrelationId,
+  generateXInitiatedAt,
+  prepHeaders,
+  handleResponse,
+  StreamingMsgpackParser,
+  parseMsgpackEvents,
+  parseMsgpackMessage,
+  createMsgpackEvent,
+} from "./http-utils";

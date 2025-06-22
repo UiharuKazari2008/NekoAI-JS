@@ -97,7 +97,7 @@ export interface ImageSummary {
   metadataType: MetadataType;
   generationTool?: string;
   positivePrompt?: string;
-  negativePrompt?: string;
+  negative_prompt?: string;
   parameters?: Record<string, any>;
   rawEntries: MetadataEntry[];
 }
@@ -313,7 +313,7 @@ function parseWebUiMetadata(entry: MetadataEntry): MetadataEntry[] {
 
   const promptParts = prompts.split("Negative prompt:");
   const positivePrompt = promptParts[0].trim();
-  const negativePrompt =
+  const negative_prompt =
     promptParts.length > 1 ? promptParts[1].trim() : "None";
 
   return [
@@ -323,7 +323,7 @@ function parseWebUiMetadata(entry: MetadataEntry): MetadataEntry[] {
     },
     {
       keyword: "Negative prompt",
-      text: negativePrompt,
+      text: negative_prompt,
     },
     {
       keyword: "Generation parameters",
@@ -503,7 +503,7 @@ export async function getImageSummary(
       const positivePrompt = metadata.entries.find(
         (e) => e.keyword === "Positive prompt",
       );
-      const negativePrompt = metadata.entries.find(
+      const negative_prompt = metadata.entries.find(
         (e) => e.keyword === "Negative prompt",
       );
       const genParams = metadata.entries.find(
@@ -511,7 +511,7 @@ export async function getImageSummary(
       );
 
       if (positivePrompt) summary.positivePrompt = positivePrompt.text;
-      if (negativePrompt) summary.negativePrompt = negativePrompt.text;
+      if (negative_prompt) summary.negative_prompt = negative_prompt.text;
 
       // Parse parameters like Steps, Sampler, CFG, etc.
       if (genParams) {
@@ -537,7 +537,7 @@ export async function getImageSummary(
       const uc = metadata.entries.find((e) => e.keyword === "uc");
 
       if (prompt) summary.positivePrompt = prompt.text;
-      if (uc) summary.negativePrompt = uc.text;
+      if (uc) summary.negative_prompt = uc.text;
 
       // Convert all entries to parameters
       summary.parameters = metadata.entries.reduce(

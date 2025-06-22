@@ -1,10 +1,12 @@
-const { NovelAI, Model, Resolution, Sampler, Noise } = require("nekoai-js");
+const { NovelAI, Model, Resolution, Sampler } = require("nekoai-js");
+const Stream = require("stream");
 require("dotenv").config();
 
 // Test function for V4 model generation
 async function testModelV45Full() {
   const client = new NovelAI({
     token: process.env.NOVELAI_TOKEN,
+    verbose: true,
   });
 
   console.log("Testing Model V4.5 generation...");
@@ -12,17 +14,17 @@ async function testModelV45Full() {
   try {
     const images = await client.generateImage(
       {
-        prompt: "1girl, blue hair, cute, anime style",
+        prompt: "1girl, cute",
+        negative_prompt: "1234",
         model: Model.V4_5,
         resPreset: Resolution.NORMAL_PORTRAIT,
-        nSamples: 1,
-        steps: 28,
-        scale: 5.5,
+        seed: 3417044607,
+        steps: 30,
+        scale: 5,
         sampler: Sampler.EULER_ANC,
-        noiseSchedule: Noise.KARRAS,
-        ucPreset: 0,
+        ucPreset: 3,
       },
-      undefined,
+      false,
       true,
     ); // Set verbose to true to see Anlas cost
 
