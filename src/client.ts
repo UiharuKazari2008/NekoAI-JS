@@ -85,6 +85,7 @@ export class NovelAI {
     metadata: Metadata,
     stream: boolean = false,
     isOpus: boolean = false,
+    forceZip: boolean = false,
   ): Promise<Image[] | AsyncGenerator<MsgpackEvent, void, unknown>> {
     // Process and validate the metadata
     const processedMetadata = this.processMetadata(metadata);
@@ -105,7 +106,7 @@ export class NovelAI {
       const isV4 =
         processedMetadata.model && isV4Model(processedMetadata.model);
 
-      if (isV4) {
+      if (isV4 && !forceZip) {
         // V4 models use streaming msgpack endpoint
         return stream
           ? this.streamV4Events(payload)
