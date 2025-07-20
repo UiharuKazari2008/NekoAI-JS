@@ -26,6 +26,7 @@ import {
   withRetry,
   prepHeaders,
   StreamingMsgpackParser,
+  StreamingSSEParser,
   parseStreamEvents,
 } from "./utils";
 import { metadataProcessor } from "./metadata";
@@ -599,6 +600,7 @@ export class NovelAI {
     const jsonPayload = JSON.stringify(payload);
     const headers = prepHeaders(this.headers);
 
+
     if (this.verbose) {
       console.log(`[Headers] for image generation:`, headers);
       console.info(`[Payload] for image generation:`, jsonPayload);
@@ -622,8 +624,10 @@ export class NovelAI {
       if (!response.body) {
         throw new Error("No response body available for streaming");
       }
+
+      console.log(`[Streaming] Started processing V4 events for action: ${payload.action}`);
       // Create a streaming msgpack parser
-      const parser = new StreamingMsgpackParser();
+      const parser = payload.action === "infill" ? new StreamingSSEParser() : new StreamingMsgpackParser();
 
       // Process chunks as they arrive
       const reader = response.body.getReader();
@@ -647,4 +651,5 @@ export class NovelAI {
       clearTimeout(timeoutId);
     }
   }
+
 }

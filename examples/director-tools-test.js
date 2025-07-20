@@ -60,7 +60,7 @@ async function testDirectorTools() {
 
     console.log("Testing Declutter...");
     try {
-      const declutterResult = await client.declutter(imageInput);
+      const declutterResult = await client.declutter(imageInput, "dreamy", 0);
       const savePath = await declutterResult.save(
         "./examples/output/declutter-test.png",
       );
@@ -73,7 +73,6 @@ async function testDirectorTools() {
     try {
       const colorizeResult = await client.colorize(
         imageInput,
-        undefined,
         "dream, mirror",
         1,
       );
@@ -89,9 +88,8 @@ async function testDirectorTools() {
     try {
       const emotionResult = await client.changeEmotion(
         imageInput,
-        undefined,
         "happy",
-        "",
+        "smile",
         0,
       );
       const savePath = await emotionResult.save(

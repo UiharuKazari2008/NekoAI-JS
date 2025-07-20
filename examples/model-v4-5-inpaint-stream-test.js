@@ -3,6 +3,7 @@ const {
   Model,
   Resolution,
   Sampler,
+  EventType,
   Action,
   parseImage,
 } = require("nekoai-js");
@@ -21,25 +22,23 @@ async function testModelV45FullInpaintStream() {
   try {
     const image = await parseImage("./examples/input/_image.png");
     const mask = await parseImage("./examples/input/_mask.png");
-
     const response = await client.generateImage(
       {
         prompt: "1girl, cute",
         negative_prompt: "1234",
-        model: Model.V4_5_INP,
-        action: Action.INPAINT,
-        resPreset: Resolution.NORMAL_PORTRAIT,
+        ucPreset: 3,
+        scale: 5,
         seed: 3417044607,
         steps: 28,
-        scale: 5,
-        sampler: Sampler.EULER_ANC,
+        action: Action.INPAINT,
+        model: Model.V4_5_INP,
+        resPreset: Resolution.NORMAL_PORTRAIT,
         image: image.base64,
         mask: mask.base64,
-        ucPreset: 3,
+        sampler: Sampler.EULER_ANC,
       },
-      true, // Set to true for streaming
       true,
-    ); // Set verbose to true to see Anlas cost
+    );
 
     // Ensure output directory exists
     fs.mkdirSync("./examples/output", { recursive: true });
@@ -50,10 +49,6 @@ async function testModelV45FullInpaintStream() {
       console.log("Handling streaming response...");
       for await (const event of response) {
         if (event.event_type === EventType.INTERMEDIATE) {
-          console.log(
-            `Intermediate event at step ${event.step_ix} for sample ${event.samp_ix}`,
-          );
-          //
           await event.image.save(
             `./examples/output/image_${event.samp_ix}_step_${event.step_ix.toString().padStart(2, "0")}.jpg`,
           );
@@ -70,10 +65,10 @@ async function testModelV45FullInpaintStream() {
         await response[i].save(`./examples/output/image_${i}_result.png`);
       }
     } else {
-      console.log("No images were generated");
+      console.error("Unexpected response type:", typeof response);
     }
   } catch (error) {
-    console.error("Error generating image:", error);
+    console.error("Error:", error);
   }
 }
 
