@@ -1,29 +1,45 @@
-const { NovelAI, Model, Resolution, Sampler, EventType } = require("nekoai-js");
+const {
+  NovelAI,
+  Model,
+  Resolution,
+  Sampler,
+  Action,
+  parseImage,
+} = require("nekoai-js");
 const fs = require("fs");
 require("dotenv").config();
 
-async function testModelV45Streaming() {
-  // Use your NAI token (replace with your actual token)
-  const token = process.env.NOVELAI_TOKEN;
+// Test function for V4 model generation
+async function testModelV45FullInpaintStream() {
+  const client = new NovelAI({
+    token: process.env.NOVELAI_TOKEN,
+    verbose: false,
+  });
 
-  // Initialize client with token authentication
-  const client = new NovelAI({ token, verbose: true });
+  console.log("Testing Model V4.5 inpainting generation...");
 
   try {
+    const image = await parseImage("./examples/input/_image.png");
+    const mask = await parseImage("./examples/input/_mask.png");
+
     const response = await client.generateImage(
       {
         prompt: "1girl, cute",
         negative_prompt: "1234",
-        ucPreset: 3,
-        scale: 5,
+        model: Model.V4_5_INP,
+        action: Action.INPAINT,
+        resPreset: Resolution.NORMAL_PORTRAIT,
         seed: 3417044607,
         steps: 28,
-        model: Model.V4_5,
-        resPreset: Resolution.NORMAL_PORTRAIT,
+        scale: 5,
         sampler: Sampler.EULER_ANC,
+        image: image.base64,
+        mask: mask.base64,
+        ucPreset: 3,
       },
+      true, // Set to true for streaming
       true,
-    );
+    ); // Set verbose to true to see Anlas cost
 
     // Ensure output directory exists
     fs.mkdirSync("./examples/output", { recursive: true });
@@ -34,6 +50,10 @@ async function testModelV45Streaming() {
       console.log("Handling streaming response...");
       for await (const event of response) {
         if (event.event_type === EventType.INTERMEDIATE) {
+          console.log(
+            `Intermediate event at step ${event.step_ix} for sample ${event.samp_ix}`,
+          );
+          //
           await event.image.save(
             `./examples/output/image_${event.samp_ix}_step_${event.step_ix.toString().padStart(2, "0")}.jpg`,
           );
@@ -50,16 +70,16 @@ async function testModelV45Streaming() {
         await response[i].save(`./examples/output/image_${i}_result.png`);
       }
     } else {
-      console.error("Unexpected response type:", typeof response);
+      console.log("No images were generated");
     }
   } catch (error) {
-    console.error("Error:", error);
+    console.error("Error generating image:", error);
   }
 }
 
-// Run the test
+// Run the test if this script is executed directly
 if (require.main === module) {
-  testModelV45Streaming().catch(console.error);
+  testModelV45FullInpaintStream().catch(console.error);
 }
 
-module.exports = { testModelV45Streaming };
+module.exports = { testModelV45Full: testModelV45FullInpaintStream };

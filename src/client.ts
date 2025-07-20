@@ -26,7 +26,7 @@ import {
   withRetry,
   prepHeaders,
   StreamingMsgpackParser,
-  parseMsgpackEvents,
+  parseStreamEvents,
 } from "./utils";
 import { metadataProcessor } from "./metadata";
 
@@ -135,9 +135,12 @@ export class NovelAI {
     const jsonPayload = JSON.stringify(payload);
     const headers = prepHeaders(this.headers);
 
+
     if (this.verbose) {
-      console.log(`[Headers] for image generation:`, headers);
-      console.info(`[Payload] for image generation:`, jsonPayload);
+      console.debug(`[Headers] for image generation:`, headers);
+      console.debug(`[Payload] for image generation:`, jsonPayload);
+
+      
     }
 
     // process.exit(-1);
@@ -245,7 +248,8 @@ export class NovelAI {
   ): Promise<Image[]> {
     const arrayBuffer = await this.getResponseBuffer(apiResponse);
     const msgpackData = new Uint8Array(arrayBuffer);
-    const events = parseMsgpackEvents(msgpackData);
+
+    const events = parseStreamEvents(msgpackData);
 
     return events
       .filter((event) => event.event_type === EventType.FINAL)

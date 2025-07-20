@@ -64,6 +64,87 @@ export class StreamingMsgpackParser {
 }
 
 /**
+ * Parse SSE (Server-Sent Events) format data into individual events
+ *
+ * @param sseData - Raw SSE stream data
+ * @returns Array of MsgpackEvent objects
+ */
+export function parseSSEEvents(sseData: Uint8Array): MsgpackEvent[] {
+  const events: MsgpackEvent[] = [];
+  const text = new TextDecoder().decode(sseData);
+  const lines = text.split('\n');
+  
+  let currentEvent: any = {};
+  
+  for (const line of lines) {
+    const trimmedLine = line.trim();
+    
+    if (trimmedLine === '') {
+      // Empty line indicates end of event
+      if (currentEvent.data) {
+        try {
+          const eventData = JSON.parse(currentEvent.data);
+          if (eventData.event_type) {
+            const event = createMsgpackEvent(eventData);
+            if (event) {
+              events.push(event);
+            }
+          }
+        } catch (error) {
+          console.warn("Failed to parse SSE event data:", error);
+        }
+      }
+      currentEvent = {};
+    } else if (trimmedLine.includes(':')) {
+      const colonIndex = trimmedLine.indexOf(':');
+      const field = trimmedLine.substring(0, colonIndex).trim();
+      const value = trimmedLine.substring(colonIndex + 1).trim();
+      
+      if (field === 'data') {
+        // Accumulate data fields (they can span multiple lines)
+        currentEvent.data = (currentEvent.data || '') + value;
+      } else {
+        currentEvent[field] = value;
+      }
+    }
+  }
+  
+  // Handle last event if no trailing empty line
+  if (currentEvent.data) {
+    try {
+      const eventData = JSON.parse(currentEvent.data);
+      if (eventData.event_type) {
+        const event = createMsgpackEvent(eventData);
+        if (event) {
+          events.push(event);
+        }
+      }
+    } catch (error) {
+      console.warn("Failed to parse final SSE event data:", error);
+    }
+  }
+  
+  return events;
+}
+
+/**
+ * Auto-detect format and parse stream data into individual events
+ *
+ * @param streamData - Raw stream data (could be msgpack or SSE format)
+ * @returns Array of MsgpackEvent objects
+ */
+export function parseStreamEvents(streamData: Uint8Array): MsgpackEvent[] {
+  // Check if data starts with SSE format indicators
+  const text = new TextDecoder().decode(streamData.slice(0, 100));
+  if (text.includes('event:') || text.includes('data:')) {
+    return parseSSEEvents(streamData);
+  }
+  
+  // Otherwise, assume it's msgpack format
+  return parseMsgpackEvents(streamData);
+}
+
+/**
  * Parse msgpack stream data into individual events
  *
  * @param msgpackData - Raw msgpack stream data
@@ -132,17 +213,24 @@ export function parseMsgpackMessage(
       return createMsgpackEvent(obj);
     }
   } catch (error) {
+    // Debug: Log messageData details when msgpack parsing fails
+    console.warn("Failed to parse msgpack message:", error);
+    console.warn("MessageData length:", messageData.length);
+    console.warn("MessageData first 32 bytes:", Array.from(messageData.slice(0, 32)).map(b => `0x${b.toString(16).padStart(2, '0')}`).join(' '));
+    console.warn("MessageData as text preview:", new TextDecoder().decode(messageData.slice(0, 100)));
+    
     // If msgpack parsing fails, try JSON fallback for compatibility
     try {
       const jsonString = new TextDecoder().decode(messageData);
       const obj = JSON.parse(jsonString);
 
       if (typeof obj === "object" && obj !== null && "event_type" in obj) {
+        console.warn("Successfully parsed as JSON, keys:", Object.keys(obj));
         return createMsgpackEvent(obj);
       }
     } catch (jsonError) {
       // Both msgpack and JSON parsing failed
-      console.warn("Failed to parse msgpack message:", error);
+      console.warn("JSON parsing also failed:", jsonError);
     }
   }
 
