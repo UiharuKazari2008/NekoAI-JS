@@ -202,6 +202,38 @@ for (const image of images) {
 }
 ```
 
+### Vibe Transfer (V4 model only)
+
+All V4 models support vibe transfer, which allows you to transfer the artistic style and mood from reference images to your generated content.
+
+```javascript
+import { NovelAI, Model, Resolution, parseImage } from "nekoai-js";
+
+// Initialize client
+const client = new NovelAI({
+  token: "your_access_token",
+});
+
+// Parse reference image for vibe transfer
+const vibeReference = await parseImage("./input/reference_style.png");
+
+// Generate image with vibe transfer
+const images = await client.generateImage({
+  prompt: "1girl, cute, detailed",
+  model: Model.V4_5,
+  resPreset: Resolution.NORMAL_PORTRAIT,
+  reference_image_multiple: [vibeReference.base64], // Reference image will be converted vibe token (process in the background)
+  reference_information_extracted_multiple: [0.7], // Extraction strength (0.0-1.0)
+  steps: 30,
+  seed: 3417044607,
+});
+
+// Process the resulting images
+for (const image of images) {
+  await image.save("./output");
+}
+```
+
 ### Image to Image
 
 To perform `img2img` action, set `action` parameter to `Action.IMG2IMG`, and provide a source image. Use the `parseImage` utility to handle multiple image formats seamlessly.
