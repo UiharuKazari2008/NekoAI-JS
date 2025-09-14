@@ -26,7 +26,8 @@ import {
   withRetry,
   prepHeaders,
   StreamingMsgpackParser,
-  parseMsgpackEvents,
+  StreamingSSEParser,
+  parseStreamEvents,
 } from "./utils";
 import { metadataProcessor } from "./metadata";
 
@@ -138,15 +139,10 @@ export class NovelAI {
     const jsonPayload = JSON.stringify(payload);
     const headers = prepHeaders(this.headers);
 
+
     if (this.verbose) {
-      let cleanPlayload = { ...payload };
-      cleanPlayload.parameters = {
-        ...cleanPlayload.parameters,
-        image: !!cleanPlayload?.parameters?.image ? ("included with " + cleanPlayload.parameters.image.length + " bytes") : undefined,
-        mask: !!cleanPlayload?.parameters?.mask ? ("included with " + cleanPlayload.parameters.mask.length + " bytes") : undefined,
-      }
-      console.log(`[Headers] for image generation:`, headers);
-      console.info(`[Payload] for image generation:`, JSON.stringify(cleanPlayload));
+      console.debug(`[Headers] for image generation:`, headers);
+      console.debug(`[Payload] for image generation:`, jsonPayload);
     }
 
     // process.exit(-1);
@@ -254,7 +250,8 @@ export class NovelAI {
   ): Promise<Image[]> {
     const arrayBuffer = await this.getResponseBuffer(apiResponse);
     const msgpackData = new Uint8Array(arrayBuffer);
-    const events = parseMsgpackEvents(msgpackData);
+
+    const events = parseStreamEvents(msgpackData);
 
     return events
       .filter((event) => event.event_type === EventType.FINAL)
@@ -604,6 +601,7 @@ export class NovelAI {
     const jsonPayload = JSON.stringify(payload);
     const headers = prepHeaders(this.headers);
 
+
     if (this.verbose) {
       console.log(`[Headers] for image generation:`, headers);
       console.info(`[Payload] for image generation:`, jsonPayload);
@@ -627,8 +625,10 @@ export class NovelAI {
       if (!response.body) {
         throw new Error("No response body available for streaming");
       }
+
+      console.log(`[Streaming] Started processing V4 events for action: ${payload.action}`);
       // Create a streaming msgpack parser
-      const parser = new StreamingMsgpackParser();
+      const parser = payload.action === "infill" ? new StreamingSSEParser() : new StreamingMsgpackParser();
 
       // Process chunks as they arrive
       const reader = response.body.getReader();
@@ -652,4 +652,5 @@ export class NovelAI {
       clearTimeout(timeoutId);
     }
   }
+
 }

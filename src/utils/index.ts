@@ -28,7 +28,10 @@ export {
   prepHeaders,
   handleResponse,
   StreamingMsgpackParser,
+  StreamingSSEParser,
+  parseStreamEvents,
   parseMsgpackEvents,
+  parseSSEEvents,
   parseMsgpackMessage,
   createMsgpackEvent,
 } from "./http-utils";

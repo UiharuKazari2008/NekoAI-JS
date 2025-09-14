@@ -1,15 +1,27 @@
-const { NovelAI, Model, Resolution, Sampler, EventType } = require("nekoai-js");
+const {
+  NovelAI,
+  Model,
+  Resolution,
+  Sampler,
+  EventType,
+  Action,
+  parseImage,
+} = require("nekoai-js");
 const fs = require("fs");
 require("dotenv").config();
 
-async function testModelV45Streaming() {
-  // Use your NAI token (replace with your actual token)
-  const token = process.env.NOVELAI_TOKEN;
+// Test function for V4 model generation
+async function testModelV45FullInpaintStream() {
+  const client = new NovelAI({
+    token: process.env.NOVELAI_TOKEN,
+    verbose: false,
+  });
 
-  // Initialize client with token authentication
-  const client = new NovelAI({ token, verbose: true });
+  console.log("Testing Model V4.5 inpainting generation...");
 
   try {
+    const image = await parseImage("./examples/input/_image.png");
+    const mask = await parseImage("./examples/input/_mask.png");
     const response = await client.generateImage(
       {
         prompt: "1girl, cute",
@@ -18,8 +30,11 @@ async function testModelV45Streaming() {
         scale: 5,
         seed: 3417044607,
         steps: 28,
-        model: Model.V4_5,
+        action: Action.INPAINT,
+        model: Model.V4_5_INP,
         resPreset: Resolution.NORMAL_PORTRAIT,
+        image: image.base64,
+        mask: mask.base64,
         sampler: Sampler.EULER_ANC,
       },
       true,
@@ -57,9 +72,9 @@ async function testModelV45Streaming() {
   }
 }
 
-// Run the test
+// Run the test if this script is executed directly
 if (require.main === module) {
-  testModelV45Streaming().catch(console.error);
+  testModelV45FullInpaintStream().catch(console.error);
 }
 
-module.exports = { testModelV45Streaming };
+module.exports = { testModelV45Full: testModelV45FullInpaintStream };
