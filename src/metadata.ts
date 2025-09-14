@@ -92,6 +92,10 @@ export class MetadataProcessor {
     metadata.normalize_reference_strength_multiple ?? true;
     metadata.reference_image_multiple = metadata.reference_image_multiple ?? undefined;
     metadata.reference_strength_multiple = metadata.reference_strength_multiple ?? undefined;
+
+    // Handle director reference defaults
+    this.applyDirectorReferenceDefaults(metadata);
+
     metadata.stream = undefined;
   }
 
@@ -459,6 +463,62 @@ export class MetadataProcessor {
       },
       legacy_uc: metadata.legacy_uc || false,
     };
+  }
+
+  /**
+   * Apply default values for director reference fields
+   * Ensures arrays have consistent lengths when director_reference_images is provided
+   * Removes all director reference parameters if no images are provided
+   *
+   * @param metadata - Metadata to update
+   * @private
+   */
+  private applyDirectorReferenceDefaults(metadata: Metadata): void {
+    // If no director reference images provided, remove all director reference parameters
+    if (!metadata.director_reference_images?.length) {
+      delete metadata.director_reference_descriptions;
+      delete metadata.director_reference_images;
+      delete metadata.director_reference_information_extracted;
+      delete metadata.director_reference_strength_values;
+      return;
+    }
+
+    const imageCount = metadata.director_reference_images.length;
+
+    // Initialize arrays if not provided
+    metadata.director_reference_descriptions = metadata.director_reference_descriptions ?? [];
+    metadata.director_reference_information_extracted = metadata.director_reference_information_extracted ?? [];
+    metadata.director_reference_strength_values = metadata.director_reference_strength_values ?? [];
+
+    // Ensure all arrays have the same length as director_reference_images
+    while (metadata.director_reference_descriptions.length < imageCount) {
+      metadata.director_reference_descriptions.push({
+        caption: {
+          base_caption: "character",
+          char_captions: []
+        },
+        legacy_uc: false
+      });
+    }
+
+    while (metadata.director_reference_information_extracted.length < imageCount) {
+      metadata.director_reference_information_extracted.push(1);
+    }
+
+    while (metadata.director_reference_strength_values.length < imageCount) {
+      metadata.director_reference_strength_values.push(1);
+    }
+
+    // Trim arrays if they're longer than the image count
+    if (metadata.director_reference_descriptions.length > imageCount) {
+      metadata.director_reference_descriptions = metadata.director_reference_descriptions.slice(0, imageCount);
+    }
+    if (metadata.director_reference_information_extracted.length > imageCount) {
+      metadata.director_reference_information_extracted = metadata.director_reference_information_extracted.slice(0, imageCount);
+    }
+    if (metadata.director_reference_strength_values.length > imageCount) {
+      metadata.director_reference_strength_values = metadata.director_reference_strength_values.slice(0, imageCount);
+    }
   }
 
   /**

@@ -134,6 +134,14 @@ export interface V4Img2Img {
   color_correct: boolean;
 }
 
+/**
+ * Director reference description format
+ */
+export interface DirectorReferenceDescription {
+  caption: V4CaptionFormat;
+  legacy_uc: boolean;
+}
+
 // Core metadata
 export interface Metadata {
   // General parameters
@@ -181,6 +189,12 @@ export interface Metadata {
   reference_image_multiple?: string[]; // Will be converted to reference_image_multiple
   reference_information_extracted_multiple?: number[]; // Will be converted to reference_information_extracted_multiple
   reference_strength_multiple?: number[]; // Will be converted to reference_strength_multiple
+
+  // Director reference settings
+  director_reference_descriptions?: DirectorReferenceDescription[]; // Will be converted to director_reference_descriptions
+  director_reference_images?: string[]; // Will be converted to director_reference_images
+  director_reference_information_extracted?: number[]; // Will be converted to director_reference_information_extracted
+  director_reference_strength_values?: number[]; // Will be converted to director_reference_strength_values
 
   // V4/V4.5 specific settings
   params_version?: 1 | 2 | 3; // Will be converted to params_version
