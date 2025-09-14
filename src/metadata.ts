@@ -84,12 +84,14 @@ export class MetadataProcessor {
     metadata.prompt = metadata.prompt ?? "1girl, cute";
     metadata.negative_prompt = metadata.negative_prompt ?? "";
     metadata.characterPrompts = metadata.characterPrompts ?? [];
-    metadata.skip_cfg_above_sigma = null;
+    metadata.skip_cfg_above_sigma = metadata.skip_cfg_above_sigma ?? null;
     metadata.legacy_uc = metadata.legacy_uc ?? false;
     metadata.legacy = metadata.legacy ?? false;
     metadata.legacy_v3_extend = metadata.legacy_v3_extend ?? false;
     metadata.normalize_reference_strength_multiple =
-      metadata.normalize_reference_strength_multiple ?? true;
+    metadata.normalize_reference_strength_multiple ?? true;
+    metadata.reference_image_multiple = metadata.reference_image_multiple ?? undefined;
+    metadata.reference_strength_multiple = metadata.reference_strength_multiple ?? undefined;
     metadata.stream = undefined;
   }
 
@@ -293,14 +295,26 @@ export class MetadataProcessor {
 
   /**
    * Handle img2img strength for V4.5 models
-   * Sets default strength if not provided
+   * Sets default strength if not provided and adds img2img object when needed
    *
    * @param metadata - Metadata to update
    * @private
    */
   handleInpaintImg2ImgStrength(metadata: Metadata): void {
     if (metadata.model === Model.V4_5 || metadata.model === Model.V4_5_INP) {
-      metadata.inpaintImg2ImgStrength = metadata.inpaintImg2ImgStrength || 1;
+      // Use metadata.strength as fallback if inpaintImg2ImgStrength is not provided
+      metadata.inpaintImg2ImgStrength = metadata.inpaintImg2ImgStrength ?? metadata.strength ?? 1;
+      
+      // Only add img2img object if inpaintImg2ImgStrength is less than 1
+      if (metadata.inpaintImg2ImgStrength < 1) {
+        metadata.img2img = {
+          strength: metadata.inpaintImg2ImgStrength,
+          color_correct: true
+        };
+      } else {
+        // Remove img2img object if inpaintImg2ImgStrength is 1 or greater
+        delete metadata.img2img;
+      }
     }
   }
 

@@ -129,6 +129,11 @@ export interface V4NegativePromptFormat {
   legacy_uc: boolean; // Will be converted to legacy_uc
 }
 
+export interface V4Img2Img {
+  strength: number;
+  color_correct: boolean;
+}
+
 // Core metadata
 export interface Metadata {
   // General parameters
@@ -162,6 +167,7 @@ export interface Metadata {
   // img2img settings
   image?: string;
   strength?: number;
+  img2img?: V4Img2Img;
   noise?: number;
   controlnet_strength?: number; // Will be converted to controlnet_strength
   controlnet_condition?: string; // Will be converted to controlnet_condition

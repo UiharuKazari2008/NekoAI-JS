@@ -97,7 +97,9 @@ export class NovelAI {
     }
 
     // Handle vibe transfer for V4 models
-    await this.encodeVibe(processedMetadata);
+    if (processedMetadata.reference_information_extracted_multiple) {
+      await this.encodeVibe(processedMetadata);
+    }
 
     // Prepare the API request payload
     const payload = prepareMetadataForApi(processedMetadata);
@@ -137,8 +139,14 @@ export class NovelAI {
     const headers = prepHeaders(this.headers);
 
     if (this.verbose) {
+      let cleanPlayload = { ...payload };
+      cleanPlayload.parameters = {
+        ...cleanPlayload.parameters,
+        image: !!cleanPlayload?.parameters?.image ? ("included with " + cleanPlayload.parameters.image.length + " bytes") : undefined,
+        mask: !!cleanPlayload?.parameters?.mask ? ("included with " + cleanPlayload.parameters.mask.length + " bytes") : undefined,
+      }
       console.log(`[Headers] for image generation:`, headers);
-      console.info(`[Payload] for image generation:`, jsonPayload);
+      console.info(`[Payload] for image generation:`, JSON.stringify(cleanPlayload));
     }
 
     // process.exit(-1);
