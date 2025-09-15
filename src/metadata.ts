@@ -88,13 +88,12 @@ export class MetadataProcessor {
     metadata.legacy_uc = metadata.legacy_uc ?? false;
     metadata.legacy = metadata.legacy ?? false;
     metadata.legacy_v3_extend = metadata.legacy_v3_extend ?? false;
-    metadata.normalize_reference_strength_multiple =
-    metadata.normalize_reference_strength_multiple ?? true;
-    metadata.reference_image_multiple = metadata.reference_image_multiple ?? undefined;
-    metadata.reference_strength_multiple = metadata.reference_strength_multiple ?? undefined;
 
     // Handle director reference defaults
     this.applyDirectorReferenceDefaults(metadata);
+
+    // Handle vibe transfer defaults (only if director references are not used)
+    this.applyVibeTransferDefaults(metadata);
 
     metadata.stream = undefined;
   }
@@ -469,6 +468,7 @@ export class MetadataProcessor {
    * Apply default values for director reference fields
    * Ensures arrays have consistent lengths when director_reference_images is provided
    * Removes all director reference parameters if no images are provided
+   * When director references are used, removes old vibe transfer parameters and bypasses vibe encoding
    *
    * @param metadata - Metadata to update
    * @private
@@ -482,6 +482,12 @@ export class MetadataProcessor {
       delete metadata.director_reference_strength_values;
       return;
     }
+
+    // Director reference images are provided - remove old vibe transfer parameters and bypass vibe encoding
+    delete metadata.reference_image_multiple;
+    delete metadata.reference_information_extracted_multiple;
+    delete metadata.reference_strength_multiple;
+    delete metadata.normalize_reference_strength_multiple;
 
     const imageCount = metadata.director_reference_images.length;
 
@@ -518,6 +524,23 @@ export class MetadataProcessor {
     }
     if (metadata.director_reference_strength_values.length > imageCount) {
       metadata.director_reference_strength_values = metadata.director_reference_strength_values.slice(0, imageCount);
+    }
+  }
+
+  /**
+   * Apply default values for vibe transfer fields
+   * Only applies when director references are not being used
+   *
+   * @param metadata - Metadata to update
+   * @private
+   */
+  private applyVibeTransferDefaults(metadata: Metadata): void {
+    // Only apply vibe transfer defaults if director references are not being used
+    if (!metadata.director_reference_images?.length) {
+      metadata.normalize_reference_strength_multiple =
+        metadata.normalize_reference_strength_multiple ?? true;
+      metadata.reference_image_multiple = metadata.reference_image_multiple ?? undefined;
+      metadata.reference_strength_multiple = metadata.reference_strength_multiple ?? undefined;
     }
   }
 
