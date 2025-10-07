@@ -480,6 +480,7 @@ export class MetadataProcessor {
       delete metadata.director_reference_images;
       delete metadata.director_reference_information_extracted;
       delete metadata.director_reference_strength_values;
+      delete metadata.director_reference_secondary_strength_values;
       return;
     }
 
@@ -495,12 +496,13 @@ export class MetadataProcessor {
     metadata.director_reference_descriptions = metadata.director_reference_descriptions ?? [];
     metadata.director_reference_information_extracted = metadata.director_reference_information_extracted ?? [];
     metadata.director_reference_strength_values = metadata.director_reference_strength_values ?? [];
+    metadata.director_reference_secondary_strength_values = metadata.director_reference_secondary_strength_values ?? [];
 
     // Ensure all arrays have the same length as director_reference_images
     while (metadata.director_reference_descriptions.length < imageCount) {
       metadata.director_reference_descriptions.push({
         caption: {
-          base_caption: "character",
+          base_caption: "character&style",
           char_captions: []
         },
         legacy_uc: false
@@ -515,6 +517,10 @@ export class MetadataProcessor {
       metadata.director_reference_strength_values.push(1);
     }
 
+    while (metadata.director_reference_secondary_strength_values.length < imageCount) {
+      metadata.director_reference_secondary_strength_values.push(1);
+    }
+
     // Trim arrays if they're longer than the image count
     if (metadata.director_reference_descriptions.length > imageCount) {
       metadata.director_reference_descriptions = metadata.director_reference_descriptions.slice(0, imageCount);
@@ -524,6 +530,9 @@ export class MetadataProcessor {
     }
     if (metadata.director_reference_strength_values.length > imageCount) {
       metadata.director_reference_strength_values = metadata.director_reference_strength_values.slice(0, imageCount);
+    }
+    if (metadata.director_reference_secondary_strength_values.length > imageCount) {
+      metadata.director_reference_secondary_strength_values = metadata.director_reference_secondary_strength_values.slice(0, imageCount);
     }
   }
 

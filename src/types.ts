@@ -195,6 +195,7 @@ export interface Metadata {
   director_reference_images?: string[]; // Will be converted to director_reference_images
   director_reference_information_extracted?: number[]; // Will be converted to director_reference_information_extracted
   director_reference_strength_values?: number[]; // Will be converted to director_reference_strength_values
+  director_reference_secondary_strength_values?: number[]; // Will be converted to director_reference_secondary_strength_values
 
   // V4/V4.5 specific settings
   params_version?: 1 | 2 | 3; // Will be converted to params_version
