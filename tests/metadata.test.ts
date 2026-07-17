@@ -165,6 +165,83 @@ describe("MetadataProcessor", () => {
   });
 });
 
+describe("director reference defaults", () => {
+  it("normalizes per-image arrays to the image count", () => {
+    const result = processor.processMetadata({
+      model: Model.V4_5,
+      director_reference_images: ["aaa", "bbb"],
+      director_reference_strength_values: [0.5],
+    });
+    expect(result.director_reference_descriptions).toHaveLength(2);
+    expect(
+      result.director_reference_descriptions![0].caption.base_caption,
+    ).toBe("character");
+    expect(result.director_reference_information_extracted).toEqual([1, 1]);
+    expect(result.director_reference_strength_values).toEqual([0.5, 1]);
+    expect(result.director_reference_secondary_strength_values).toEqual([1, 1]);
+  });
+
+  it("removes vibe transfer parameters when director references are used", () => {
+    const result = processor.processMetadata({
+      model: Model.V4_5,
+      director_reference_images: ["aaa"],
+      reference_image_multiple: ["vibe"],
+      reference_information_extracted_multiple: [0.7],
+    });
+    expect(result.reference_image_multiple).toBeUndefined();
+    expect(result.reference_information_extracted_multiple).toBeUndefined();
+    expect(result.normalize_reference_strength_multiple).toBeUndefined();
+  });
+
+  it("drops director parameters when no images are provided", () => {
+    const result = processor.processMetadata({
+      model: Model.V4_5,
+      director_reference_strength_values: [1],
+    });
+    expect(result.director_reference_strength_values).toBeUndefined();
+    expect(result.normalize_reference_strength_multiple).toBe(true);
+  });
+
+  it("adds +5 Anlas to the cost estimate", () => {
+    const base = { model: Model.V4_5, n_samples: 2 };
+    const withRef = calculateCost({
+      ...base,
+      director_reference_images: ["aaa"],
+    });
+    expect(withRef).toBe(calculateCost(base) + 5);
+  });
+});
+
+describe("inpaint img2img strength (V4.5)", () => {
+  it("adds an img2img object when strength is below 1", () => {
+    const result = processor.processMetadata({
+      model: Model.V4_5_INP,
+      action: Action.INPAINT,
+      inpaintImg2ImgStrength: 0.5,
+    });
+    expect(result.img2img).toEqual({ strength: 0.5, color_correct: true });
+  });
+
+  it("omits the img2img object at full strength", () => {
+    const result = processor.processMetadata({
+      model: Model.V4_5_INP,
+      action: Action.INPAINT,
+      inpaintImg2ImgStrength: 1,
+    });
+    expect(result.img2img).toBeUndefined();
+  });
+
+  it("falls back to metadata.strength", () => {
+    const result = processor.processMetadata({
+      model: Model.V4_5_INP,
+      action: Action.INPAINT,
+      strength: 0.4,
+    });
+    expect(result.inpaintImg2ImgStrength).toBe(0.4);
+    expect(result.img2img?.strength).toBe(0.4);
+  });
+});
+
 describe("prepareMetadataForApi", () => {
   const processed = processor.processMetadata({
     prompt: "1girl",

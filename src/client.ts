@@ -52,6 +52,40 @@ import { metadataProcessor } from "./metadata";
 const VIBE_CACHE_LIMIT = 100;
 
 /**
+ * Detect whether a base64 string is an actual image (needing vibe encoding)
+ * rather than a pre-encoded vibe token
+ */
+function isEncodableImage(base64: string): boolean {
+  // Base64 prefixes of PNG, JPEG, WebP/RIFF and GIF magic bytes
+  return ["iVBOR", "/9j/", "UklGR", "R0lGO"].some((magic) =>
+    base64.startsWith(magic),
+  );
+}
+
+/**
+ * Copy of a request payload with bulky base64 fields replaced by size
+ * annotations, for verbose logging
+ */
+function redactPayload(payload: any): any {
+  const params = payload?.parameters;
+  if (!params) return payload;
+
+  const redact = (value: unknown) =>
+    typeof value === "string" ? `<base64: ${value.length} chars>` : value;
+
+  const redacted: any = { ...params };
+  for (const key of ["image", "mask"]) {
+    if (redacted[key] !== undefined) redacted[key] = redact(redacted[key]);
+  }
+  for (const key of ["reference_image_multiple", "director_reference_images"]) {
+    if (Array.isArray(redacted[key])) {
+      redacted[key] = redacted[key].map(redact);
+    }
+  }
+  return { ...payload, parameters: redacted };
+}
+
+/**
  * NovelAI client for image generation, director tools and text generation
  */
 export class NovelAI {
@@ -100,6 +134,7 @@ export class NovelAI {
    * @param metadata - Generation parameters
    * @param stream - Whether to stream intermediate steps (V4/V4.5 models only, default: false)
    * @param isOpus - Whether the user has Opus subscription (for cost estimation logging, default: false)
+   * @param forceZip - Route V4 models through the ZIP endpoint instead of the event stream (default: false)
    * @returns Array of Image objects, or an AsyncGenerator of MsgpackEvent objects when streaming
    */
   generateImage(metadata: Metadata): Promise<Image[]>;
@@ -107,6 +142,7 @@ export class NovelAI {
     metadata: Metadata,
     stream: false,
     isOpus?: boolean,
+    forceZip?: boolean,
   ): Promise<Image[]>;
   generateImage(
     metadata: Metadata,
@@ -117,11 +153,13 @@ export class NovelAI {
     metadata: Metadata,
     stream: boolean,
     isOpus?: boolean,
+    forceZip?: boolean,
   ): Promise<Image[] | AsyncGenerator<MsgpackEvent, void, unknown>>;
   async generateImage(
     metadata: Metadata,
     stream: boolean = false,
     isOpus: boolean = false,
+    forceZip: boolean = false,
   ): Promise<Image[] | AsyncGenerator<MsgpackEvent, void, unknown>> {
     const resolved = await this.resolveImageInputs(metadata);
     const processedMetadata = metadataProcessor.processMetadata(resolved);
@@ -135,12 +173,13 @@ export class NovelAI {
     await this.encodeVibe(processedMetadata);
 
     const payload = prepareMetadataForApi(processedMetadata);
-    const isV4 = isV4Model(processedMetadata.model!);
+    const useEventStream =
+      isV4Model(processedMetadata.model!) && !forceZip;
 
     if (stream) {
-      if (!isV4) {
+      if (!useEventStream) {
         throw new Error(
-          "Streaming is only supported for V4/V4.5 models; V3 models return the final image only.",
+          "Streaming is only supported for V4/V4.5 models without forceZip; V3 models return the final image only.",
         );
       }
       // Open the connection (with retry) before returning the generator so
@@ -152,9 +191,14 @@ export class NovelAI {
       return this.parseEventStream(response, payload.action);
     }
 
+    if (!useEventStream) {
+      // The ZIP endpoint does not understand the stream parameter
+      delete payload.parameters.stream;
+    }
+
     return withRetry(async () => {
       try {
-        if (isV4) {
+        if (useEventStream) {
           const response = await this.request(
             `${this.host}${Endpoint.IMAGE_STREAM}`,
             payload,
@@ -247,7 +291,7 @@ export class NovelAI {
     const headers = prepHeaders(this.headers);
 
     if (this.verbose) {
-      console.debug(`[Request] ${url}`, jsonPayload);
+      console.debug(`[Request] ${url}`, JSON.stringify(redactPayload(payload)));
     }
 
     try {
@@ -276,7 +320,7 @@ export class NovelAI {
     const headers = prepHeaders(this.headers);
 
     if (this.verbose) {
-      console.debug(`[Stream] ${url}`, jsonPayload);
+      console.debug(`[Stream] ${url}`, JSON.stringify(redactPayload(payload)));
     }
 
     try {
@@ -651,6 +695,14 @@ export class NovelAI {
 
     for (let i = 0; i < metadata.reference_image_multiple.length; i++) {
       const refImage = metadata.reference_image_multiple[i] as string;
+
+      // Pre-encoded vibe tokens (e.g. from .naiv4vibe files) are passed
+      // through untouched; only actual images are sent to /encode-vibe
+      if (!isEncodableImage(refImage)) {
+        encoded.push(refImage);
+        continue;
+      }
+
       const refInfoExtracted =
         metadata.reference_information_extracted_multiple?.[i] ?? 1.0;
 

@@ -146,6 +146,71 @@ export class MetadataProcessor {
     metadata.legacy_uc = metadata.legacy_uc ?? false;
     metadata.legacy = metadata.legacy ?? false;
     metadata.legacy_v3_extend = metadata.legacy_v3_extend ?? false;
+
+    this.applyDirectorReferenceDefaults(metadata);
+    this.applyVibeTransferDefaults(metadata);
+
+    metadata.stream = undefined;
+  }
+
+  /**
+   * Apply defaults for director reference (character reference) fields.
+   * When director reference images are present, the per-image arrays are
+   * normalized to matching lengths and vibe transfer parameters are removed
+   * (the two features are mutually exclusive). Without images, all director
+   * reference parameters are dropped.
+   */
+  private applyDirectorReferenceDefaults(metadata: Metadata): void {
+    if (!metadata.director_reference_images?.length) {
+      delete metadata.director_reference_descriptions;
+      delete metadata.director_reference_images;
+      delete metadata.director_reference_information_extracted;
+      delete metadata.director_reference_strength_values;
+      delete metadata.director_reference_secondary_strength_values;
+      return;
+    }
+
+    // Director references replace vibe transfer
+    delete metadata.reference_image_multiple;
+    delete metadata.reference_information_extracted_multiple;
+    delete metadata.reference_strength_multiple;
+    delete metadata.normalize_reference_strength_multiple;
+
+    const count = metadata.director_reference_images.length;
+    const fit = <T>(values: T[] | undefined, fill: () => T): T[] => {
+      const result = (values ?? []).slice(0, count);
+      while (result.length < count) result.push(fill());
+      return result;
+    };
+
+    metadata.director_reference_descriptions = fit(
+      metadata.director_reference_descriptions,
+      () => ({
+        caption: { base_caption: "character", char_captions: [] },
+        legacy_uc: false,
+      }),
+    );
+    metadata.director_reference_information_extracted = fit(
+      metadata.director_reference_information_extracted,
+      () => 1,
+    );
+    metadata.director_reference_strength_values = fit(
+      metadata.director_reference_strength_values,
+      () => 1,
+    );
+    metadata.director_reference_secondary_strength_values = fit(
+      metadata.director_reference_secondary_strength_values,
+      () => 1,
+    );
+  }
+
+  /**
+   * Apply defaults for vibe transfer fields (only when director references
+   * are not in use)
+   */
+  private applyVibeTransferDefaults(metadata: Metadata): void {
+    if (metadata.director_reference_images?.length) return;
+
     metadata.normalize_reference_strength_multiple =
       metadata.normalize_reference_strength_multiple ?? true;
     if (metadata.reference_image_multiple?.length) {
@@ -153,7 +218,6 @@ export class MetadataProcessor {
         metadata.reference_strength_multiple ??
         metadata.reference_image_multiple.map(() => 0.6);
     }
-    metadata.stream = undefined;
   }
 
   /**
@@ -228,11 +292,22 @@ export class MetadataProcessor {
   }
 
   /**
-   * Default inpaint img2img strength for V4.5 models
+   * Default inpaint img2img strength for V4.5 models. When below 1, the API
+   * additionally expects an img2img sub-object with color correction.
    */
   handleInpaintImg2ImgStrength(metadata: Metadata): void {
     if (metadata.model === Model.V4_5 || metadata.model === Model.V4_5_INP) {
-      metadata.inpaintImg2ImgStrength = metadata.inpaintImg2ImgStrength || 1;
+      metadata.inpaintImg2ImgStrength =
+        metadata.inpaintImg2ImgStrength ?? metadata.strength ?? 1;
+
+      if (metadata.inpaintImg2ImgStrength < 1) {
+        metadata.img2img = {
+          strength: metadata.inpaintImg2ImgStrength,
+          color_correct: true,
+        };
+      } else {
+        delete metadata.img2img;
+      }
     }
   }
 

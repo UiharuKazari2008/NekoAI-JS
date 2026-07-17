@@ -127,17 +127,13 @@ export interface V4ConditionInput {
   use_order?: boolean;
 }
 
+/**
+ * img2img sub-object sent alongside V4.5 inpainting when the
+ * inpaint img2img strength is below 1
+ */
 export interface V4Img2Img {
   strength: number;
   color_correct: boolean;
-}
-
-/**
- * Director reference description format
- */
-export interface DirectorReferenceDescription {
-  caption: V4CaptionFormat;
-  legacy_uc: boolean;
 }
 
 // Core metadata
@@ -202,12 +198,6 @@ export interface Metadata {
   director_reference_strength_values?: number[];
   /** Fidelity slider (0-1) per reference image */
   director_reference_secondary_strength_values?: number[];
-
-  // Director reference settings
-  director_reference_descriptions?: DirectorReferenceDescription[]; // Will be converted to director_reference_descriptions
-  director_reference_images?: string[]; // Will be converted to director_reference_images
-  director_reference_information_extracted?: number[]; // Will be converted to director_reference_information_extracted
-  director_reference_strength_values?: number[]; // Will be converted to director_reference_strength_values
 
   // V4/V4.5 specific settings
   params_version?: 1 | 2 | 3;

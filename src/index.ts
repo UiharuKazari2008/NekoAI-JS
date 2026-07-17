@@ -43,6 +43,7 @@ export type {
   TextGenerationOptions,
   V4CaptionFormat,
   V4ConditionInput,
+  V4Img2Img,
   V4NegativePromptFormat,
   V4PromptFormat,
 } from "./types";
