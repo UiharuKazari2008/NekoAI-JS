@@ -3,6 +3,7 @@ import {
   HEADERS,
   Host,
   Endpoint,
+  Action,
   DirectorTools,
   EmotionOptions,
   EmotionLevel,
@@ -17,6 +18,7 @@ import {
   ChatMessage,
   Completion,
   DirectorRequest,
+  EnhanceOptions,
   ImageInput,
   Metadata,
   NovelAIOptions,
@@ -39,6 +41,7 @@ import {
   StreamingMsgpackParser,
   StreamingSSEParser,
   parseStreamEvents,
+  scaleDimensions,
   timestampString,
   uint8ArrayToBase64,
   withRetry,
@@ -415,19 +418,7 @@ export class NovelAI {
 
         // Buffer once — the response stream can only be consumed a single time
         const arrayBuffer = await this.getResponseBuffer(response);
-        let data: Uint8Array;
-
-        try {
-          // Director tools return ZIP files containing a single image
-          const zip = await JSZip.loadAsync(arrayBuffer);
-          const firstFile = Object.values(zip.files).find((f) => !f.dir);
-          data = firstFile
-            ? await firstFile.async("uint8array")
-            : new Uint8Array(arrayBuffer);
-        } catch {
-          // If ZIP extraction fails, treat as raw image data
-          data = new Uint8Array(arrayBuffer);
-        }
+        const data = await this.unzipSingleImage(arrayBuffer);
 
         return new Image({
           filename: createFilename(request.req_type),
@@ -437,6 +428,22 @@ export class NovelAI {
         throw this.handleRequestError(error);
       }
     }, this.retryConfig);
+  }
+
+  /**
+   * Extract the first image from a single-image ZIP response, falling back
+   * to the raw bytes when the response is not a ZIP.
+   */
+  private async unzipSingleImage(arrayBuffer: ArrayBuffer): Promise<Uint8Array> {
+    try {
+      const zip = await JSZip.loadAsync(arrayBuffer);
+      const firstFile = Object.values(zip.files).find((f) => !f.dir);
+      return firstFile
+        ? await firstFile.async("uint8array")
+        : new Uint8Array(arrayBuffer);
+    } catch {
+      return new Uint8Array(arrayBuffer);
+    }
   }
 
   /**
@@ -521,6 +528,76 @@ export class NovelAI {
     return this.createDirectorRequest(image, DirectorTools.EMOTION, {
       prompt: `${emotion};;${prompt}`,
       defry: emotionLevel,
+    });
+  }
+
+  /**
+   * Upscale an image using NovelAI's dedicated upscaler
+   *
+   * Note: this endpoint lives on api.novelai.net and requires an active
+   * subscription; the upscaled image is returned as-is (no re-generation).
+   *
+   * @param image - Image input (path, Blob, File, URL, etc.)
+   * @param scale - Upscale factor, 2 or 4 (default: 4)
+   * @returns Promise resolving to the upscaled Image
+   */
+  async upscale(image: ImageInput, scale: 2 | 4 = 4): Promise<Image> {
+    const parsed = await parseImage(image);
+
+    return withRetry(async () => {
+      try {
+        const response = await this.request(`${Host.API}${Endpoint.UPSCALE}`, {
+          image: parsed.base64,
+          width: parsed.width,
+          height: parsed.height,
+          scale,
+        });
+
+        if (!response.data) {
+          throw new Error("Received empty response from the server.");
+        }
+
+        const arrayBuffer = await this.getResponseBuffer(response);
+        return new Image({
+          filename: createFilename("upscaled"),
+          data: await this.unzipSingleImage(arrayBuffer),
+        });
+      } catch (error) {
+        throw this.handleRequestError(error);
+      }
+    }, this.retryConfig);
+  }
+
+  /**
+   * Enhance an image — img2img re-generation at a scaled-up resolution,
+   * mirroring the web UI's Enhance feature. The target resolution is the
+   * source size multiplied by upscaleFactor, clamped to the API's pixel budget.
+   *
+   * @param image - Image input (path, Blob, File, URL, etc.)
+   * @param options - Enhance options plus any generation metadata
+   *                  (upscaleFactor default 1.5, strength 0.5, noise 0)
+   * @returns Promise resolving to an array of Image objects
+   */
+  async enhance(
+    image: ImageInput,
+    options: EnhanceOptions = {},
+  ): Promise<Image[]> {
+    const { upscaleFactor = 1.5, strength = 0.5, noise = 0, ...rest } = options;
+    const parsed = await parseImage(image);
+    const [width, height] = scaleDimensions(
+      parsed.width,
+      parsed.height,
+      upscaleFactor,
+    );
+
+    return this.generateImage({
+      ...rest,
+      action: Action.IMG2IMG,
+      image: parsed.base64,
+      width,
+      height,
+      strength,
+      noise,
     });
   }
 

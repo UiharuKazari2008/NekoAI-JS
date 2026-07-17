@@ -34,6 +34,7 @@
 | ✨ **Latest Models**        | Full support for V3, V4, and V4.5 models including multi-character generation.                         |
 | 🛠️ **Director Tools**       | Complete support for all NovelAI Director tools like line art, background removal, and emotion change. |
 | 📝 **Text Generation**      | Chat and text completions through NovelAI's OpenAI-compatible endpoints, with streaming support.       |
+| 🔍 **Upscale & Enhance**    | Dedicated 2x/4x upscaler plus img2img-based enhancement at scaled-up resolutions.                      |
 | 🏷️ **Tag Suggestions**      | Query NovelAI's tag autocomplete for prompt building.                                                  |
 | 🔄 **TypeScript Support**   | Full TypeScript definitions for all API parameters and responses.                                      |
 | 🔁 **Automatic Retries**    | Built-in retry mechanism for handling rate limits and temporary API failures.                          |
@@ -578,6 +579,24 @@ console.log(continuation.choices[0].text);
 ```
 
 Generation options (`max_tokens`, `temperature`, `top_p`, `top_k`, `min_p`, `frequency_penalty`, `presence_penalty`, `stop`, `seed`, `logit_bias`, ...) are passed through to the API in OpenAI format.
+
+### 🔍 Upscale & Enhance
+
+`upscale()` runs NovelAI's dedicated upscaler (no re-generation, exact content preserved). `enhance()` mirrors the web UI's Enhance feature: img2img re-generation at a scaled-up resolution for adding detail.
+
+```javascript
+// Upscale 2x or 4x (dedicated upscaler on api.novelai.net)
+const upscaled = await client.upscale("./output/image.png", 2);
+await upscaled.save("./output/upscaled.png");
+
+// Enhance: re-generate at 1.5x resolution with img2img
+const enhanced = await client.enhance("./output/image.png", {
+  prompt: "1girl, cute, watercolor", // ideally the original prompt
+  upscaleFactor: 1.5, // target resolution multiplier (clamped to API limits)
+  strength: 0.4, // lower = closer to the original
+});
+await enhanced[0].save("./output/enhanced.png");
+```
 
 ### 🏷️ Tag Suggestions
 

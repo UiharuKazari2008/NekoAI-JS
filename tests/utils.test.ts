@@ -4,8 +4,10 @@ import {
   createFilename,
   deduplicateTags,
   formatFileSize,
+  scaleDimensions,
   uint8ArrayToBase64,
   withRetry,
+  MAX_PIXELS,
   NovelAIApiError,
 } from "../src/utils";
 
@@ -53,6 +55,28 @@ describe("formatFileSize", () => {
     expect(formatFileSize(512)).toBe("512 B");
     expect(formatFileSize(2048)).toBe("2.0 KB");
     expect(formatFileSize(5 * 1024 * 1024)).toBe("5.0 MB");
+  });
+});
+
+describe("scaleDimensions", () => {
+  it("scales by the factor, floored to multiples of 64", () => {
+    expect(scaleDimensions(512, 768, 1.5)).toEqual([768, 1152]);
+  });
+
+  it("clamps to the pixel budget", () => {
+    const [w, h] = scaleDimensions(1024, 1536, 4);
+    expect(w * h).toBeLessThanOrEqual(MAX_PIXELS);
+    expect(w % 64).toBe(0);
+    expect(h % 64).toBe(0);
+  });
+
+  it("keeps the aspect ratio approximately", () => {
+    const [w, h] = scaleDimensions(512, 1024, 2);
+    expect(h / w).toBeCloseTo(2, 0);
+  });
+
+  it("never goes below 64", () => {
+    expect(scaleDimensions(64, 64, 0.1)).toEqual([64, 64]);
   });
 });
 

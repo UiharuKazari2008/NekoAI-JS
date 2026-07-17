@@ -19,6 +19,7 @@ export enum Endpoint {
   DIRECTOR = "/ai/augment-image",
   ENCODE_VIBE = "/ai/encode-vibe",
   SUGGEST_TAGS = "/ai/generate-image/suggest-tags",
+  UPSCALE = "/ai/upscale",
   CHAT_COMPLETIONS = "/oa/v1/chat/completions",
   COMPLETIONS = "/oa/v1/completions",
   TEXT_MODELS = "/oa/v1/models",

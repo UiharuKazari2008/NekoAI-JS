@@ -309,6 +309,18 @@ export interface NovelAIResponse {
   data: ArrayBuffer | ReadableStream<Uint8Array> | null;
 }
 
+/**
+ * Options for the enhance() convenience method — img2img re-generation at a
+ * scaled-up resolution, mirroring the web UI's Enhance feature.
+ */
+export type EnhanceOptions = Omit<
+  Metadata,
+  "image" | "action" | "width" | "height"
+> & {
+  /** Target resolution multiplier relative to the source image (default: 1.5) */
+  upscaleFactor?: number;
+};
+
 // Tag suggestion types
 export interface TagSuggestion {
   tag: string;

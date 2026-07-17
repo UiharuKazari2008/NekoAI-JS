@@ -1,6 +1,32 @@
 import { Metadata } from "../types";
 import { Action, isV4Model } from "../constants";
 
+/** Maximum total pixel count accepted by the generation API */
+export const MAX_PIXELS = 3047424;
+
+/**
+ * Scale image dimensions by a factor, clamped to the API's pixel budget and
+ * floored to multiples of 64 (the generation API's dimension granularity).
+ *
+ * @param width - Source width
+ * @param height - Source height
+ * @param factor - Desired scale factor
+ * @param maxPixels - Maximum total pixel count (default: MAX_PIXELS)
+ * @returns Scaled [width, height] tuple
+ */
+export function scaleDimensions(
+  width: number,
+  height: number,
+  factor: number,
+  maxPixels: number = MAX_PIXELS,
+): [number, number] {
+  const clamped = Math.min(factor, Math.sqrt(maxPixels / (width * height)));
+  return [
+    Math.max(64, Math.floor((width * clamped) / 64) * 64),
+    Math.max(64, Math.floor((height * clamped) / 64) * 64),
+  ];
+}
+
 /**
  * Prepares metadata for API request
  * @param metadata - Processed metadata object
