@@ -133,7 +133,9 @@ async function parseImageInBrowser(input: ImageInput): Promise<ParsedImage> {
     } else if (input instanceof ArrayBuffer || input instanceof Uint8Array) {
       const buffer =
         input instanceof ArrayBuffer ? new Uint8Array(input) : input;
-      return parseImageInBrowser(new Blob([buffer], { type: "image/png" }));
+      return parseImageInBrowser(
+        new Blob([buffer as unknown as BlobPart], { type: "image/png" }),
+      );
     } else if (typeof input === "object" && input !== null) {
       if ("data" in input && input.data instanceof Uint8Array) {
         return parseImageInBrowser(input.data);

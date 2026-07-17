@@ -113,7 +113,7 @@ export class Image {
     const mimeType = this.filename.toLowerCase().endsWith(".png")
       ? "image/png"
       : "image/jpeg";
-    return new Blob([this.data], { type: mimeType });
+    return new Blob([this.data as unknown as BlobPart], { type: mimeType });
   }
 
   /**
@@ -130,7 +130,9 @@ export class Image {
     const mimeType = this.filename.toLowerCase().endsWith(".png")
       ? "image/png"
       : "image/jpeg";
-    return new File([this.data], this.filename, { type: mimeType });
+    return new File([this.data as unknown as BlobPart], this.filename, {
+      type: mimeType,
+    });
   }
 }
 

@@ -7,7 +7,7 @@
 import { parseImage } from "./image-utils";
 import { ImageInput } from "../types";
 import { isNodeEnvironment } from "./platform-utils";
-import pako from "pako";
+import { ungzip } from "pako";
 import extractChunks from "png-chunks-extract";
 import * as pngChunkText from "png-chunk-text";
 import ExifReader from "exifreader";
@@ -123,14 +123,14 @@ async function extractPngMetadata(
 
           const headerBytes = dataArray.slice(0, 11);
           const decoder = new TextDecoder();
-          let header = decoder.decode(new Uint8Array(headerBytes));
+          const header = decoder.decode(new Uint8Array(headerBytes));
 
           if (header === "Description") {
             const contentBytes = dataArray.slice(11);
-            let txt = decoder.decode(new Uint8Array(contentBytes));
+            const txt = decoder.decode(new Uint8Array(contentBytes));
             return { keyword: "Description", text: txt };
           } else {
-            let txt = decoder.decode(new Uint8Array(dataArray));
+            const txt = decoder.decode(new Uint8Array(dataArray));
             return { keyword: "Unknown", text: txt };
           }
         } else {
@@ -247,8 +247,8 @@ async function extractStealthMetadata(
     // Extract the least significant bit from each alpha channel
     for (let x = 0; x < img.width; x++) {
       for (let y = 0; y < img.height; y++) {
-        let index = (y * img.width + x) * 4;
-        let a = imagePixels.data[index + 3];
+        const index = (y * img.width + x) * 4;
+        const a = imagePixels.data[index + 3];
         lowestData.push(a & 1);
       }
     }
@@ -261,7 +261,7 @@ async function extractStealthMetadata(
     if (magic === magicString) {
       const dataLength = reader.readInt32();
       const gzipData = reader.readNBytes(dataLength / 8);
-      const data = pako.ungzip(new Uint8Array(gzipData));
+      const data = ungzip(new Uint8Array(gzipData));
       const jsonString = new TextDecoder().decode(data);
 
       try {

@@ -1,9 +1,9 @@
-# 🐾 NekoAI-JS
+# NekoAI-JS
 
 <div align="center">
   <img src="https://raw.githubusercontent.com/Nya-Foundation/NekoAI-JS/main/assets/banner.png" alt="NekoAI-JS Banner" width="800" />
-  <h3>🎨 A lightweight JavaScript/TypeScript API for NovelAI image generation and director tools.</h3>
-  
+  <p>A lightweight JavaScript/TypeScript client for the NovelAI API: image generation, Director tools, and text generation.</p>
+
   <div>
     <a href="https://github.com/Nya-Foundation/NekoAI-JS/blob/main/LICENSE"><img src="https://img.shields.io/github/license/Nya-Foundation/nekoai-js.svg" alt="License"/></a>
     <a href="https://github.com/Nya-Foundation/NekoAI-JS/actions/workflows/release.yml"><img src="https://github.com/Nya-Foundation/NekoAI-JS/actions/workflows/release.yml/badge.svg" alt="Builds & Release"/></a>
@@ -12,548 +12,311 @@
   </div>
 </div>
 
-## 🌈 Introduction
+## Overview
 
-> 🐾 **NekoAI-JS** is a **lightweight** and **easy-to-use** JavaScript/TypeScript wrapper for NovelAI's image and text generation capabilities. This package makes it simple to integrate NovelAI's powerful image generation, Director tools and text models into your JavaScript applications with minimal code overhead.
->
-> Built with modern JavaScript/TypeScript features for both browser and Node.js environments, it provides full access to NovelAI's latest models (V3, V4, V4.5) and Director tools while maintaining a clean interface. This project is based on the [NekoAI-API](https://github.com/Nya-Foundation/NekoAI-API) Python package.
+NekoAI-JS wraps NovelAI's image and text generation APIs behind a small, strongly typed interface. It runs in both Node.js and browsers, ships CJS and ESM builds with full TypeScript definitions, and is based on the [NekoAI-API](https://github.com/Nya-Foundation/NekoAI-API) Python package.
 
-### 📄 License Change Notice
+**Capabilities**
 
-> **Important**: This project has transitioned from MIT to **AGPL-3.0** license to ensure better compliance and alignment with our inspiration source. As this work builds significantly upon concepts and approaches from NekoAI-API, we've adopted a more appropriate license that better reflects the collaborative nature of open-source development and provides stronger copyleft protections for the community.
+- Image generation with V3, V4, and V4.5 models, including multi-character prompts, img2img, and inpainting
+- Real-time streaming of V4/V4.5 generation steps
+- Vibe transfer and character reference (director reference) for V4.5
+- Dedicated 2x/4x upscaling and img2img-based enhancement
+- All Director tools: line art, sketch, background removal, declutter, colorize, emotion change
+- Text generation (chat and completions) through NovelAI's OpenAI-compatible endpoints, with streaming
+- Tag autocomplete suggestions
+- Metadata extraction from AI-generated images (PNG text chunks, EXIF, NovelAI stealth LSB)
+- Automatic retries with exponential backoff, structured API errors, flexible image inputs
 
-## 🌟 Core Capabilities
+## Requirements
 
-| Feature                     | Description                                                                                            |
-| --------------------------- | ------------------------------------------------------------------------------------------------------ |
-| 🚀 **Lightweight**          | Focuses on image generation and Director tools, providing a simple and easy-to-use interface.          |
-| ⚙️ **Parameterized**        | Provides strongly typed interfaces to easily set up generation parameters with validation.             |
-| 🔑 **Token Authentication** | Supports direct token authentication for API access.                                                   |
-| 🎬 **Real-time Streaming**  | Stream V4/V4.5 generation progress in real-time, watching each denoising step as it happens.           |
-| 🌐 **Cross-Platform**       | Works in both browser and Node.js environments.                                                        |
-| ✨ **Latest Models**        | Full support for V3, V4, and V4.5 models including multi-character generation.                         |
-| 🛠️ **Director Tools**       | Complete support for all NovelAI Director tools like line art, background removal, and emotion change. |
-| 📝 **Text Generation**      | Chat and text completions through NovelAI's OpenAI-compatible endpoints, with streaming support.       |
-| 🔍 **Upscale & Enhance**    | Dedicated 2x/4x upscaler plus img2img-based enhancement at scaled-up resolutions.                      |
-| 🏷️ **Tag Suggestions**      | Query NovelAI's tag autocomplete for prompt building.                                                  |
-| 🔄 **TypeScript Support**   | Full TypeScript definitions for all API parameters and responses.                                      |
-| 🔁 **Automatic Retries**    | Built-in retry mechanism for handling rate limits and temporary API failures.                          |
+- Node.js 18 or later, or a modern browser
+- A NovelAI account with an active subscription and a [persistent API token](https://docs.novelai.net/)
 
-## 📦 Installation
+## Installation
 
 ```sh
-# Using npm
 npm install nekoai-js
-
-# Using yarn
-yarn add nekoai-js
-
-# Using pnpm
-pnpm add nekoai-js
+# or: yarn add nekoai-js / pnpm add nekoai-js / bun add nekoai-js
 ```
 
-For Node.js environments, you may need to install the optional canvas dependency for image processing:
+In Node.js, install the optional `canvas` package if you plan to pass images by file path or buffer (img2img, inpainting, director tools, metadata extraction):
 
 ```sh
-# Using npm
 npm install canvas
-
-# Using yarn
-yarn add canvas
-
-# Using pnpm
-pnpm add canvas
 ```
 
-This is not required for browser environments, as they use the native Canvas API.
+Browsers use the native Canvas API and do not need this dependency.
 
-## 🚀 Usage
+## Quick Start
 
-### 🔑 Initialization
+```ts
+import { NovelAI, Model, Resolution } from "nekoai-js";
 
-Import the package and initialize a client with your NovelAI access token.
+const client = new NovelAI({ token: process.env.NOVELAI_TOKEN });
 
-```javascript
-// ESM
-import { NovelAI } from "nekoai-js";
-
-// CommonJS
-const { NovelAI } = require("nekoai-js");
-
-// Initialize with token
-const client = new NovelAI({
-  token: "your_access_token",
-});
-```
-
-### 🖼️ Image Generation
-
-Generate images with the `generateImage` method. The method takes parameters directly or as a `Metadata` object.
-
-```javascript
-import { NovelAI, Model, Resolution, Sampler } from "nekoai-js";
-
-// Initialize client
-const client = new NovelAI({
-  token: "your_access_token",
-});
-
-// Generate using parameters directly
 const images = await client.generateImage({
   prompt: "1girl, cute, anime style, detailed",
   model: Model.V4_5,
   resPreset: Resolution.NORMAL_PORTRAIT,
-  n_samples: 1,
-  seed: 1234567890, // Fixed seed for reproducibility
 });
 
-// Save images (Node.js environment)
-for (const image of images) {
-  await image.save("./output");
-  console.log(`Image saved: ${image.filename}`);
-}
-
-// Get image data URL (browser environment)
-for (const image of images) {
-  const dataUrl = image.toDataURL();
-  console.log(`Image data URL: ${dataUrl.substring(0, 50)}...`);
-}
+await images[0].save("./output"); // Node.js
+// or, in the browser:
+// imgElement.src = images[0].toDataURL();
 ```
 
-### Streaming Generation (V4/V4.5 Models)
+The package is dual-published: `import { NovelAI } from "nekoai-js"` (ESM) and `const { NovelAI } = require("nekoai-js")` (CJS) both work.
 
-V4 and V4.5 models support real-time streaming, allowing you to watch the generation process as it happens. Enable streaming by passing `true` as the second parameter to `generateImage()`.
+## Client Configuration
 
-```javascript
-import { NovelAI, Model, Resolution, EventType } from "nekoai-js";
-
-// Initialize client
+```ts
 const client = new NovelAI({
-  token: "your_access_token",
-});
-
-// Generate with streaming enabled
-const response = await client.generateImage(
-  {
-    prompt: "1girl, cute, anime style",
-    model: Model.V4_5,
-    resPreset: Resolution.NORMAL_PORTRAIT,
-    steps: 28,
-    seed: 3417044607,
+  token: "your_access_token", // required
+  host: Host.WEB,             // image API host (default: https://image.novelai.net)
+  textHost: Host.TEXT,        // text API host (default: https://text.novelai.net)
+  timeout: 120000,            // ms until the API responds, including generation time
+  retry: {
+    enabled: true,            // default: true
+    maxRetries: 3,            // default: 3
+    baseDelay: 1000,          // exponential backoff base, ms
+    maxDelay: 30000,          // backoff cap, ms
+    retryStatusCodes: [429, 500, 502, 503, 504],
   },
-  true, // Enable streaming
+  verbose: false,             // log payloads and estimated Anlas cost
+});
+```
+
+## Image Generation
+
+`generateImage(metadata)` accepts a `Metadata` object. Every field is optional except `prompt` in practice; unset fields receive the same defaults the NovelAI web UI uses (model `V4_5`, 28 steps, scale 6.0, Euler Ancestral sampler, quality tags and negative-prompt preset applied).
+
+```ts
+const images = await client.generateImage({
+  prompt: "1girl, cute, anime style",
+  model: Model.V4_5,
+  resPreset: Resolution.NORMAL_PORTRAIT,
+  n_samples: 1,
+  steps: 28,
+  scale: 6.0,
+  seed: 1234567890,     // omit for a random seed
+  qualityToggle: true,  // append model-specific quality tags
+  ucPreset: 0,          // negative-prompt preset strength (0-3, model dependent)
+});
+```
+
+### Models
+
+| Enum                  | API id                              |
+| --------------------- | ----------------------------------- |
+| `Model.V4_5`          | `nai-diffusion-4-5-full`            |
+| `Model.V4_5_INP`      | `nai-diffusion-4-5-full-inpainting` |
+| `Model.V4_5_CUR`      | `nai-diffusion-4-5-curated`         |
+| `Model.V4_5_CUR_INP`  | `nai-diffusion-4-5-curated-inpainting` |
+| `Model.V4`            | `nai-diffusion-4-full`              |
+| `Model.V4_INP`        | `nai-diffusion-4-full-inpainting`   |
+| `Model.V4_CUR`        | `nai-diffusion-4-curated-preview`   |
+| `Model.V4_CUR_INP`    | `nai-diffusion-4-curated-inpainting` |
+| `Model.V3`            | `nai-diffusion-3`                   |
+| `Model.V3_INP`        | `nai-diffusion-3-inpainting`        |
+| `Model.FURRY`         | `nai-diffusion-furry-3`             |
+| `Model.FURRY_INP`     | `nai-diffusion-furry-3-inpainting`  |
+
+### Resolution presets
+
+`resPreset` sets `width`/`height` unless you specify them explicitly. Explicit dimensions are rounded up to multiples of 64 and validated against the API's pixel budget.
+
+| Preset                          | Dimensions  |
+| ------------------------------- | ----------- |
+| `SMALL_PORTRAIT` / `SMALL_LANDSCAPE` / `SMALL_SQUARE` | 512x768 / 768x512 / 640x640 |
+| `NORMAL_PORTRAIT` / `NORMAL_LANDSCAPE` / `NORMAL_SQUARE` | 832x1216 / 1216x832 / 1024x1024 |
+| `LARGE_PORTRAIT` / `LARGE_LANDSCAPE` / `LARGE_SQUARE` | 1024x1536 / 1536x1024 / 1472x1472 |
+| `WALLPAPER_PORTRAIT` / `WALLPAPER_LANDSCAPE` | 1088x1920 / 1920x1088 |
+
+### Streaming
+
+V4/V4.5 generations can stream each denoising step. Pass `true` as the second argument; the return type narrows to an async generator of `MsgpackEvent` objects.
+
+```ts
+import { EventType } from "nekoai-js";
+
+const stream = await client.generateImage(
+  { prompt: "1girl, night sky", model: Model.V4_5 },
+  true,
 );
 
-// Handle streaming response
-if (response && typeof response[Symbol.asyncIterator] === "function") {
-  console.log("Streaming generation steps...");
-  
-  for await (const event of response) {
-    if (event.event_type === EventType.INTERMEDIATE) {
-      // Save intermediate steps
-      await event.image.save(`./output/step_${event.step_ix}.jpg`);
-      console.log(`Step ${event.step_ix} completed`);
-    } else if (event.event_type === EventType.FINAL) {
-      // Save final result
-      await event.image.save(`./output/final_result.png`);
-      console.log("Generation complete!");
-    }
+for await (const event of stream) {
+  if (event.event_type === EventType.INTERMEDIATE) {
+    console.log(`step ${event.step_ix}`); // event.image is a JPEG preview
+  } else if (event.event_type === EventType.FINAL) {
+    await event.image.save("./output/final.png");
   }
 }
 ```
 
-### Multi-Character Generation (V4.5)
+Streaming with a V3 model throws, since V3 only returns final images.
 
-V4.5 models support generating multiple characters with character-specific prompts and positioning.
+### Image inputs
 
-```javascript
-import { NovelAI, Model, Resolution } from "nekoai-js";
+Every image-bearing field (`image`, `mask`, `reference_image_multiple`, `director_reference_images`, and all director tool / upscale / enhance arguments) accepts any of:
 
-// Initialize client
-const client = new NovelAI({
-  token: "your_access_token",
-});
+- file path (Node.js)
+- HTTP(S) URL, data URL, or blob URL
+- raw base64 string
+- `Blob`, `File`, `ArrayBuffer`, `Uint8Array`
+- `HTMLImageElement`, `HTMLCanvasElement` (browser)
+- `{ data: Uint8Array }` (for example, a generated `Image` object)
 
-// Create character prompts with positioning
-const characterPrompts = [
-  {
-    prompt: "girl, red hair, red dress",
-    uc: "bad hands, bad anatomy",
-    center: { x: 0.3, y: 0.3 },
-  },
-  {
-    prompt: "boy, blue hair, blue uniform",
-    uc: "bad hands, bad anatomy",
-    center: { x: 0.7, y: 0.7 },
-  },
-];
+Conversion happens automatically; you no longer need to call `parseImage` yourself (it remains exported for cases where you need dimensions).
 
-// Generate image with multiple characters
-const images = await client.generateImage({
-  prompt: "two people standing together, park background",
-  model: Model.V4_5,
-  resPreset: Resolution.NORMAL_LANDSCAPE,
-  characterPrompts,
-});
+### img2img
 
-// Process the resulting images
-for (const image of images) {
-  // Browser
-  const dataUrl = image.toDataURL();
-  // Node.js
-  await image.save("./output");
-}
-```
-
-### Vibe Transfer (V4 model only)
-
-All V4 models support vibe transfer, which allows you to transfer the artistic style and mood from reference images to your generated content.
-
-```javascript
-import { NovelAI, Model, Resolution, parseImage } from "nekoai-js";
-
-// Initialize client
-const client = new NovelAI({
-  token: "your_access_token",
-});
-
-// Parse reference image for vibe transfer
-const vibeReference = await parseImage("./input/reference_style.png");
-
-// Generate image with vibe transfer
-const images = await client.generateImage({
-  prompt: "1girl, cute, detailed",
-  model: Model.V4_5,
-  resPreset: Resolution.NORMAL_PORTRAIT,
-  reference_image_multiple: [vibeReference.base64], // Reference image will be converted vibe token (process in the background)
-  reference_information_extracted_multiple: [0.7], // Extraction strength (0.0-1.0)
-  steps: 30,
-  seed: 3417044607,
-});
-
-// Process the resulting images
-for (const image of images) {
-  await image.save("./output");
-}
-```
-
-### Image to Image
-
-To perform `img2img` action, set `action` parameter to `Action.IMG2IMG`, and provide a source image. The `image` and `mask` fields accept any supported image input — a file path (Node.js), Blob, File, URL, data URL, `Uint8Array` or raw base64 — and are converted automatically.
-
-```javascript
-import { NovelAI, Action } from "nekoai-js";
-
-// Initialize client
-const client = new NovelAI({
-  token: "your_access_token",
-});
+```ts
+import { Action } from "nekoai-js";
 
 const images = await client.generateImage({
   prompt: "1girl, fantasy outfit",
   action: Action.IMG2IMG,
-  image: "./input/image.png", // any ImageInput format works
-  strength: 0.5, // Lower = more similar to original
+  image: "./input/image.png",
+  strength: 0.5, // lower = closer to the source
   noise: 0.1,
 });
-
-for (const image of images) {
-  await image.save("./output");
-}
 ```
 
-### Inpainting (V4.5)
+### Inpainting
 
-V4.5 supports advanced inpainting for selective image editing. Use `Model.V4_5_INP` for optimal inpainting results.
+Use an inpainting model with `Action.INPAINT`. White mask areas are regenerated.
 
-```javascript
-import { NovelAI, Model, Action, parseImage } from "nekoai-js";
-
-// Initialize client
-const client = new NovelAI({
-  token: "your_access_token",
-});
-
-// Parse images using the utility function
-const sourceImage = await parseImage("./input/source.png");
-const maskImage = await parseImage("./input/mask.png");
-
+```ts
 const images = await client.generateImage({
-  prompt: "beautiful flower garden",
-  model: Model.V4_5_INP, // Use inpainting model
+  prompt: "1girl, red eyes",
+  model: Model.V4_5_INP,
   action: Action.INPAINT,
-  image: sourceImage.base64,
-  mask: maskImage.base64,
-  steps: 28,
-  seed: 3417044607,
+  image: "./input/image.png",
+  mask: "./input/mask.png",
+  add_original_image: true, // preserve unmasked areas exactly
 });
-
-for (const image of images) {
-  await image.save("./output");
-}
 ```
 
-### Streaming Inpainting
+### Multi-character prompts (V4/V4.5)
 
-Combine streaming with inpainting to watch the inpainting process in real-time.
-
-```javascript
-import { NovelAI, Model, Action, EventType, parseImage } from "nekoai-js";
-
-// Initialize client
-const client = new NovelAI({
-  token: "your_access_token",
-});
-
-// Parse images
-const sourceImage = await parseImage("./input/source.png");
-const maskImage = await parseImage("./input/mask.png");
-
-// Generate with streaming inpainting
-const response = await client.generateImage(
-  {
-    prompt: "1girl, cute",
-    model: Model.V4_5_INP,
-    action: Action.INPAINT,
-    image: sourceImage.base64,
-    mask: maskImage.base64,
-    steps: 28,
-  },
-  true, // Enable streaming
-);
-
-// Process streaming results
-for await (const event of response) {
-  if (event.event_type === EventType.INTERMEDIATE) {
-    await event.image.save(`./output/inpaint_step_${event.step_ix}.jpg`);
-  } else if (event.event_type === EventType.FINAL) {
-    await event.image.save(`./output/inpaint_final.png`);
-  }
-}
-```
-
-### Director Tools
-
-NovelAI offers several Director tools for image manipulation, all accessible through dedicated methods. These tools automatically handle various image input formats through the built-in `parseImage` utility.
-
-```javascript
-import { NovelAI } from "nekoai-js";
-
-// Initialize client
-const client = new NovelAI({
-  token: "your_access_token",
-});
-
-// Line Art - supports file paths, Blobs, Files, URLs, etc.
-const lineArtResult = await client.lineArt("./input/image.png");
-await lineArtResult.save("./output");
-
-// Background Removal
-const bgRemovalResult = await client.backgroundRemoval("./input/image.png");
-await bgRemovalResult.save("./output");
-
-// Change Emotion
-const emotionResult = await client.changeEmotion(
-  "./input/image.png",
-  "happy", // Target emotion
-  "neutral", // Additional prompt
-  0, // Emotion level (0-5)
-);
-await emotionResult.save("./output");
-
-// Other Director Tools
-const declutterResult = await client.declutter("./input/image.png", "dreamy", 0);
-const colorizeResult = await client.colorize("./input/image.png","dream, mirror",1,);
-```
-
-All Director Tool methods automatically handle ZIP-compressed responses from the API, extracting the image data for you. This works across both Node.js and browser environments.
-
-### Image Input Support
-
-NekoAI-JS provides comprehensive image input support through the `parseImage` utility function, which automatically handles format detection and conversion across different environments.
-
-#### Supported Image Formats
-
-The `parseImage` function supports multiple input types for maximum flexibility:
-
-```javascript
-import { NovelAI, parseImage } from "nekoai-js";
-
-const client = new NovelAI({
-  token: "your_access_token",
-});
-
-// 1. File paths (Node.js only)
-const image1 = await parseImage("./input/photo.png");
-const image2 = await parseImage("./input/drawing.jpg");
-
-// 2. Uint8Array / ArrayBuffer (both environments)
-const imageData = new Uint8Array(/* image bytes */);
-const image3 = await parseImage(imageData);
-
-// 3. Base64 strings (both environments)
-const base64String = "iVBORw0KGgoAAAANSUhEUgAA...";
-const image4 = await parseImage(`data:image/png;base64,${base64String}`);
-
-// 4. URLs (browser only)
-const image5 = await parseImage("https://example.com/image.png");
-const image6 = await parseImage("data:image/jpeg;base64,/9j/4AAQ...");
-
-// 5. File objects from input elements (browser only)
-const fileInput = document.getElementById("imageInput");
-const file = fileInput.files[0];
-const image7 = await parseImage(file);
-
-// 6. Blob objects (browser only)
-const response = await fetch("https://example.com/image.png");
-const blob = await response.blob();
-const image8 = await parseImage(blob);
-
-// 7. Canvas elements (browser only)
-const canvas = document.getElementById("myCanvas");
-const image9 = await parseImage(canvas);
-
-// 8. Image elements (browser only)
-const imgElement = document.getElementById("myImage");
-const image10 = await parseImage(imgElement);
-
-// The parseImage function returns { width, height, base64 }
-console.log(`Image dimensions: ${image1.width}x${image1.height}`);
-
-// Use with generation or director tools
+```ts
 const images = await client.generateImage({
-  prompt: "enhance this image",
-  action: Action.IMG2IMG,
-  image: image1.base64,
-  width: image1.width,
-  height: image1.height,
+  prompt: "two people standing together, park background",
+  model: Model.V4_5,
+  characterPrompts: [
+    {
+      prompt: "girl, red hair, red dress",
+      uc: "bad hands, bad anatomy",
+      center: { x: 0.3, y: 0.5 }, // optional; coordinates in 0-1
+    },
+    {
+      prompt: "boy, blue hair, blue uniform",
+      center: { x: 0.7, y: 0.5 },
+    },
+  ],
 });
 ```
 
-#### Cross-Platform Compatibility
+Character coordinates are only sent when at least one character has a non-default center. The V4 prompt structures (`v4_prompt`, `v4_negative_prompt`) are built automatically.
 
-- **Node.js**: Supports file paths, Uint8Array, ArrayBuffer, and URLs
-- **Browser**: Supports File, Blob, Canvas, Image elements, Data URLs, and remote URLs
-- **Both**: Supports Uint8Array, ArrayBuffer, and base64 data
+### Vibe transfer (V4/V4.5)
 
-#### Automatic Format Detection
+Reference images are encoded into vibe tokens through `/ai/encode-vibe` (results are cached in-memory per client, keyed by image hash, extraction level, and model).
 
-The utility automatically:
-- Detects image dimensions
-- Converts to base64 format for API compatibility
-- Handles JPEG, PNG, and other common formats
-- Preserves image quality during conversion
-- Works seamlessly across different environments
-
-### Advanced Usage Examples
-
-Here are practical examples showing how to use `parseImage` with various input formats and director tools:
-
-#### Node.js Environment
-
-```javascript
-import { NovelAI, parseImage } from "nekoai-js";
-
-const client = new NovelAI({
-  token: "your_access_token",
+```ts
+const images = await client.generateImage({
+  prompt: "1girl, cute",
+  model: Model.V4_5,
+  reference_image_multiple: ["./input/reference.png"],
+  reference_information_extracted_multiple: [0.7], // 0-1, default 1.0
+  reference_strength_multiple: [0.6],              // 0-1, default 0.6
 });
-
-// Example 1: Processing multiple image formats
-const imageFormats = [
-  "./input/photo.png",
-  "./input/sketch.jpg", 
-  "./input/artwork.webp"
-];
-
-for (const imagePath of imageFormats) {
-  const parsedImage = await parseImage(imagePath);
-  console.log(`Processing ${imagePath}: ${parsedImage.width}x${parsedImage.height}`);
-  
-  const result = await client.lineArt(imagePath);
-  await result.save(`./output/lineart_${Date.now()}.png`);
-}
-
-// Example 2: Using with binary data
-const fs = require("fs");
-const imageBuffer = fs.readFileSync("./input/photo.png");
-const result = await client.backgroundRemoval(imageBuffer);
-await result.save("./output");
 ```
 
-#### Browser Environment
+### Character reference (V4.5)
 
-```javascript
-import { NovelAI, parseImage } from "nekoai-js";
+Director reference conditions the generation on a reference character and/or style. Reference images should be 1024x1536, 1536x1024, or 1472x1472, padded with black to fit.
 
-const client = new NovelAI({
-  token: "your_access_token",
+```ts
+const images = await client.generateImage({
+  prompt: "1girl, dancing in the rain",
+  model: Model.V4_5,
+  director_reference_images: ["./reference/character.png"],
+  director_reference_descriptions: [
+    { caption: { base_caption: "character&style", char_captions: [] } },
+  ],
+  director_reference_information_extracted: [1],
+  director_reference_strength_values: [1],
+  director_reference_secondary_strength_values: [1], // fidelity, 0-1
 });
-
-// Example 1: File upload with preview
-const fileInput = document.getElementById("fileInput");
-fileInput.addEventListener("change", async (e) => {
-  const file = e.target.files[0];
-  if (!file) return;
-
-  // Parse the image to get dimensions
-  const parsedImage = await parseImage(file);
-  console.log(`Uploaded image: ${parsedImage.width}x${parsedImage.height}`);
-
-  // Process with director tool
-  const result = await client.lineArt(file);
-
-  // Display result
-  const img = document.createElement("img");
-  img.src = result.toDataURL();
-  img.style.maxWidth = "500px";
-  document.body.appendChild(img);
-});
-
-// Example 2: Canvas processing
-const canvas = document.getElementById("drawingCanvas");
-const processCanvas = async () => {
-  const result = await client.sketch(canvas);
-  
-  // Create download link
-  const link = document.createElement("a");
-  link.download = "sketch_result.png";
-  link.href = result.toDataURL();
-  link.click();
-};
-
-// Example 3: URL processing with error handling
-const processImageUrl = async (url) => {
-  try {
-    const result = await client.colorize(url);
-    return result.toDataURL();
-  } catch (error) {
-    console.error("Failed to process image:", error);
-    return null;
-  }
-};
 ```
 
-### 📝 Text Generation
+Use `base_caption: "character"` to transfer only the character, or `"character&style"` to transfer the art style as well.
 
-Generate text through NovelAI's OpenAI-compatible endpoints on `text.novelai.net`. Both one-shot and streaming modes are supported.
+### Upscale and enhance
 
-```javascript
-import { NovelAI, TextModel } from "nekoai-js";
+```ts
+// Dedicated upscaler (api.novelai.net); pixels preserved, no re-generation
+const upscaled = await client.upscale("./output/image.png", 2); // scale: 2 or 4
+await upscaled.save("./output/upscaled.png");
 
-const client = new NovelAI({ token: "your_access_token" });
+// Enhance: img2img re-generation at a scaled-up resolution
+const enhanced = await client.enhance("./output/image.png", {
+  prompt: "1girl, cute, watercolor", // ideally the image's original prompt
+  upscaleFactor: 1.5,                // clamped to the API's pixel budget
+  strength: 0.4,                     // lower = closer to the source
+});
+await enhanced[0].save("./output/enhanced.png");
+```
 
-// List available text models
+## Director Tools
+
+Each tool takes any supported image input and returns a single `Image`.
+
+```ts
+const lineArt = await client.lineArt("./input/image.png");
+const sketch = await client.sketch("./input/image.png");
+const noBackground = await client.backgroundRemoval("./input/image.png");
+const decluttered = await client.declutter("./input/image.png");
+const colorized = await client.colorize("./input/lineart.png", "blue hair", 0);
+
+import { EmotionOptions, EmotionLevel } from "nekoai-js";
+const happy = await client.changeEmotion(
+  "./input/image.png",
+  EmotionOptions.HAPPY,
+  "",                  // additional prompt
+  EmotionLevel.NORMAL, // strength of the change
+);
+```
+
+## Tag Suggestions
+
+```ts
+const suggestions = await client.suggestTags("blue hai");
+// [{ tag: "blue hair", confidence: ..., count: ... }, ...]
+```
+
+An optional second argument selects the model (`Model.V4_5` by default) and a third the query language (`"en"` or `"jp"`).
+
+## Text Generation
+
+Text generation uses NovelAI's OpenAI-compatible endpoints on `text.novelai.net`. Query the live model list with `listTextModels()`; the `TextModel` enum covers the currently available ids (`glm-4-6`, `xialong-v1`).
+
+```ts
+import { TextModel } from "nekoai-js";
+
 const models = await client.listTextModels();
 
-// Chat completion (a plain string becomes a single user message)
+// Chat completion; a plain string becomes a single user message
 const completion = await client.chat("Describe a cozy tavern in one sentence.", {
-  model: TextModel.GLM_4_6,
+  model: TextModel.GLM_4_6, // default
   max_tokens: 100,
   temperature: 1.0,
 });
 console.log(completion.choices[0].message.content);
 
-// Full message arrays work too
+// Message arrays with roles
 const reply = await client.chat(
   [
     { role: "system", content: "You are a concise storyteller." },
@@ -562,10 +325,8 @@ const reply = await client.chat(
   { max_tokens: 100 },
 );
 
-// Streaming chat completion
-const stream = await client.chatStream("Tell me a short story.", {
-  max_tokens: 200,
-});
+// Streaming
+const stream = await client.chatStream("Tell me a short story.", { max_tokens: 200 });
 for await (const chunk of stream) {
   const delta = chunk.choices[0]?.delta?.content;
   if (delta) process.stdout.write(delta);
@@ -578,148 +339,108 @@ const continuation = await client.completion("The old lighthouse keeper", {
 console.log(continuation.choices[0].text);
 ```
 
-Generation options (`max_tokens`, `temperature`, `top_p`, `top_k`, `min_p`, `frequency_penalty`, `presence_penalty`, `stop`, `seed`, `logit_bias`, ...) are passed through to the API in OpenAI format.
+Options follow the OpenAI parameter names (`max_tokens`, `temperature`, `top_p`, `top_k`, `min_p`, `frequency_penalty`, `presence_penalty`, `stop`, `seed`, `logit_bias`, `n`); unknown keys are passed through to the API unchanged.
 
-### 🔍 Upscale & Enhance
+## Working with Results
 
-`upscale()` runs NovelAI's dedicated upscaler (no re-generation, exact content preserved). `enhance()` mirrors the web UI's Enhance feature: img2img re-generation at a scaled-up resolution for adding detail.
+Generation methods return `Image` objects:
 
-```javascript
-// Upscale 2x or 4x (dedicated upscaler on api.novelai.net)
-const upscaled = await client.upscale("./output/image.png", 2);
-await upscaled.save("./output/upscaled.png");
+| Member | Description |
+| ------ | ----------- |
+| `image.data` | Raw bytes (`Uint8Array`) |
+| `image.filename` | Timestamped default filename |
+| `image.size` | Size in bytes |
+| `await image.save(path)` | Write to disk (Node.js). Directories are created as needed; a trailing `/` or extension-less path is treated as a directory |
+| `image.toBase64()` | Base64 string |
+| `image.toDataURL()` | `data:` URL for direct use in `img.src` |
+| `image.toBlob()` / `image.toFile()` | Browser `Blob` / `File` |
 
-// Enhance: re-generate at 1.5x resolution with img2img
-const enhanced = await client.enhance("./output/image.png", {
-  prompt: "1girl, cute, watercolor", // ideally the original prompt
-  upscaleFactor: 1.5, // target resolution multiplier (clamped to API limits)
-  strength: 0.4, // lower = closer to the original
-});
-await enhanced[0].save("./output/enhanced.png");
+## Metadata Extraction
+
+Read generation parameters back out of AI-generated images. Supports NovelAI PNG text chunks, NovelAI stealth metadata (alpha-channel LSB), and Stable Diffusion WebUI EXIF/parameters formats.
+
+```ts
+import { extractImageMetadata, getImageSummary } from "nekoai-js";
+
+const metadata = await extractImageMetadata("./image.png");
+// { type: "NOVELAI" | "SD-WEBUI" | "NONE", entries: [{ keyword, text }, ...] }
+
+const summary = await getImageSummary("./image.png");
+// { dimensions, generationTool, positivePrompt, parameters, ... }
 ```
 
-### 🏷️ Tag Suggestions
+## Error Handling
 
-Query NovelAI's tag autocomplete — useful for building prompt UIs:
+API failures throw `NovelAIApiError`, which carries the HTTP status and the error message returned by the API:
 
-```javascript
-const suggestions = await client.suggestTags("blue hai");
-for (const s of suggestions) {
-  console.log(s.tag, s.confidence);
-}
-```
+```ts
+import { NovelAIApiError } from "nekoai-js";
 
-### Character Reference (V4.5)
-
-V4.5 models support director reference images (character reference / precise reference). Pass any supported image input; for character reference the image should be 1024x1536, 1536x1024 or 1472x1472 (padded with black to fit):
-
-```javascript
-const images = await client.generateImage({
-  prompt: "1girl, dancing in the rain",
-  model: Model.V4_5,
-  director_reference_images: ["./reference/character.png"],
-  director_reference_descriptions: [
-    {
-      caption: { base_caption: "character&style", char_captions: [] },
-    },
-  ],
-  director_reference_information_extracted: [1],
-  director_reference_strength_values: [1],
-  director_reference_secondary_strength_values: [1], // fidelity
-});
-```
-
-### Using Custom Hosts
-
-NekoAI-JS supports using custom hosts for API requests. This is useful if you need to use a different endpoint or if you're using a proxy server.
-
-```javascript
-import { NovelAI, Model, Host } from "nekoai-js";
-
-// Method 1: Use predefined hosts
-const client1 = new NovelAI({
-  token: "your_access_token",
-  host: Host.API, // Use API host instead of default WEB host
-});
-
-const images1 = await client1.generateImage({
-  prompt: "1girl, cute, anime style",
-  model: Model.V3,
-});
-
-// Method 2: Use a custom host URL
-const client2 = new NovelAI({
-  token: "your_access_token",
-  host: "https://your-custom-host.com", // Direct URL string
-});
-
-const images2 = await client2.generateImage({
-  prompt: "1girl, cute, anime style",
-  model: Model.V4,
-});
-
-// Custom hosts work with all other client methods
-const lineArtResult = await client2.lineArt("./input/image.png");
-```
-
-You can use custom hosts for:
-
-1. Connection to third-party API providers
-2. Working with proxies
-3. Connecting to local NovelAI servers
-4. Load balancing between multiple endpoints
-
-### Custom Retry Configuration
-
-NekoAI-JS includes a built-in retry mechanism for handling rate limits and temporary API failures. By default, retries are enabled with reasonable defaults, but you can customize this behavior:
-
-```javascript
-import { NovelAI, Model } from "nekoai-js";
-
-// Initialize client with custom retry settings
-const client = new NovelAI({
-  token: "your_access_token",
-  retry: {
-    enabled: true, // Enable retries
-    maxRetries: 5, // Maximum 5 retry attempts
-    baseDelay: 2000, // Start with 2 second delay
-    maxDelay: 60000, // Maximum delay of 1 minute
-    retryStatusCodes: [429, 500, 502, 503, 504], // Status codes that trigger a retry
-  },
-});
-
-// Generate image with retry
 try {
-  const images = await client.generateImage({
-    prompt: "1girl, cute, anime style",
-    model: Model.V4_5,
-  });
-
-  console.log("Success after potential retries!");
-} catch (error) {
-  console.error("Failed even after retries:", error);
+  await client.generateImage({ prompt: "1girl" });
+} catch (err) {
+  if (err instanceof NovelAIApiError) {
+    console.error(err.status, err.message); // e.g. 402 "Not enough Anlas"
+  }
 }
 ```
 
-You can also disable retries completely if needed:
+Retryable failures (rate limits, 5xx responses, network errors, timeouts) are retried automatically with exponential backoff and jitter according to the client's `retry` configuration. Set `retry: { enabled: false }` to disable.
 
-```javascript
-const client = new NovelAI({
-  token: "your_access_token",
-  retry: {
-    enabled: false, // Disable retries
-  },
-});
+## Method Reference
+
+| Method | Description |
+| ------ | ----------- |
+| `generateImage(metadata, stream?, isOpus?)` | Generate images; `stream: true` returns an async generator of step events |
+| `enhance(image, options?)` | img2img re-generation at a scaled-up resolution |
+| `upscale(image, scale?)` | Dedicated 2x/4x upscaler |
+| `lineArt(image)` / `sketch(image)` / `backgroundRemoval(image)` / `declutter(image)` | Director tools |
+| `colorize(image, prompt?, defry?)` | Colorize sketch or line art |
+| `changeEmotion(image, emotion?, prompt?, level?)` | Change a character's emotion |
+| `suggestTags(prompt, model?, lang?)` | Tag autocomplete |
+| `chat(messages, options?)` | Chat completion (OpenAI format) |
+| `chatStream(messages, options?)` | Streaming chat completion |
+| `completion(prompt, options?)` | Raw text completion |
+| `listTextModels()` | Available text model ids |
+| `useDirectorTool(request)` | Low-level director tool access |
+
+## Browser Usage
+
+The library works in browsers without extra dependencies; image parsing uses the DOM Canvas API. Note that calling the NovelAI API directly from a browser is subject to CORS policy, and embedding a user's token in client-side code should be handled with care. For user-facing applications, NovelAI recommends asking each user for their own persistent API token.
+
+```html
+<script type="module">
+  import { NovelAI, Model } from "./node_modules/nekoai-js/dist/index.mjs";
+
+  const client = new NovelAI({ token });
+  const images = await client.generateImage({ prompt: "1girl", model: Model.V4_5 });
+  document.querySelector("img").src = images[0].toDataURL();
+</script>
 ```
 
-The retry mechanism uses exponential backoff with jitter to prevent overwhelming the API service when it's under stress.
+## Development
+
+```sh
+npm install
+npm run typecheck  # tsc --noEmit
+npm test           # vitest (offline unit tests)
+npm run lint       # eslint
+npm run build      # tsup -> dist/ (CJS + ESM + d.ts)
+```
+
+Examples in `examples/` run against the live API and expect a `NOVELAI_TOKEN` entry in `.env`.
+
+## License
+
+Licensed under [AGPL-3.0](LICENSE).
+
+This project transitioned from MIT to AGPL-3.0 to align with its inspiration source, [NekoAI-API](https://github.com/Nya-Foundation/NekoAI-API), and to provide stronger copyleft protections for the community.
 
 ## References
 
-[NovelAI Documentation](https://docs.novelai.net/)
-
-[NovelAI Backend API](https://api.novelai.net/docs)
-
-[NovelAI Unofficial Knowledgebase](https://naidb.miraheze.org/wiki/Using_the_API)
-
-[NekoAI-API Python Package](https://github.com/Nya-Foundation/NekoAI-API)
+- [NovelAI Documentation](https://docs.novelai.net/)
+- [NovelAI Image API](https://image.novelai.net/docs/index.html)
+- [NovelAI Text API](https://text.novelai.net/docs/index.html)
+- [NovelAI Backend API](https://api.novelai.net/docs)
+- [NovelAI Unofficial Knowledgebase](https://naidb.miraheze.org/wiki/Using_the_API)
+- [NekoAI-API (Python)](https://github.com/Nya-Foundation/NekoAI-API)

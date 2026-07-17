@@ -58,6 +58,17 @@ describe("formatFileSize", () => {
   });
 });
 
+describe("pako v3 compatibility", () => {
+  it("gzip/ungzip round-trips (used by stealth metadata extraction)", async () => {
+    const pako = await import("pako");
+    const payload = new TextEncoder().encode(
+      JSON.stringify({ prompt: "1girl", steps: 28 }),
+    );
+    const unzipped = pako.ungzip(pako.gzip(payload));
+    expect(new TextDecoder().decode(unzipped)).toContain('"prompt":"1girl"');
+  });
+});
+
 describe("scaleDimensions", () => {
   it("scales by the factor, floored to multiples of 64", () => {
     expect(scaleDimensions(512, 768, 1.5)).toEqual([768, 1152]);
