@@ -17,28 +17,41 @@ export {
   Resolution,
   RESOLUTION_DIMENSIONS,
   Sampler,
+  TextModel,
 } from "./constants";
 
 // Export types
 export type {
+  ChatCompletion,
+  ChatCompletionChunk,
+  ChatMessage,
+  ChatRole,
   CharacterCaption,
   CharacterPrompt,
+  Completion,
   DirectorRequest,
+  ImageInput,
   ImageOptions,
   Metadata,
-  NovelAIError,
   NovelAIOptions,
   NovelAIResponse,
+  ParsedImage,
   PositionCoords,
   RetryConfig,
-  User,
+  TagSuggestion,
+  TextGenerationOptions,
   V4CaptionFormat,
+  V4ConditionInput,
   V4NegativePromptFormat,
   V4PromptFormat,
 } from "./types";
 
 // Export utilities
 export {
+  NovelAIApiError,
+  SSEStream,
+  StreamingMsgpackParser,
+  StreamingSSEParser,
   calculateCost,
   createFilename,
   DEFAULT_RETRY_CONFIG,
@@ -46,6 +59,7 @@ export {
   ensureDirectoryExists,
   formatFileSize,
   parseImage,
+  parseStreamEvents,
   prepareMetadataForApi,
   saveBinaryFile,
   base64ToUint8Array,

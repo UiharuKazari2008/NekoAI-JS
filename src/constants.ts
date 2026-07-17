@@ -1,21 +1,8 @@
 export const HEADERS = {
-  Accept: "*/*",
-  "Accept-Language": "en-US,en;q=0.5",
-  "Accept-Encoding": "gzip, deflate, br",
   "Content-Type": "application/json",
-  Host: "image.novelai.net",
+  Accept: "*/*",
   Origin: "https://novelai.net",
   Referer: "https://novelai.net",
-  DNT: "1",
-  "Sec-GPC": "1",
-  Connection: "keep-alive",
-  "Sec-Fetch-Dest": "empty",
-  "Sec-Fetch-Mode": "cors",
-  "Sec-Fetch-Site": "same-site",
-  Priority: "u=0",
-  Pragma: "no-cache",
-  "Cache-Control": "no-cache",
-  TE: "trailers",
   "User-Agent":
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:138.0) Gecko/20100101 Firefox/138.0",
 };
@@ -23,15 +10,18 @@ export const HEADERS = {
 export enum Host {
   WEB = "https://image.novelai.net",
   API = "https://api.novelai.net",
+  TEXT = "https://text.novelai.net",
 }
 
 export enum Endpoint {
-  LOGIN = "/user/login",
-  USERDATA = "/user/data",
   IMAGE = "/ai/generate-image",
   IMAGE_STREAM = "/ai/generate-image-stream",
   DIRECTOR = "/ai/augment-image",
   ENCODE_VIBE = "/ai/encode-vibe",
+  SUGGEST_TAGS = "/ai/generate-image/suggest-tags",
+  CHAT_COMPLETIONS = "/oa/v1/chat/completions",
+  COMPLETIONS = "/oa/v1/completions",
+  TEXT_MODELS = "/oa/v1/models",
 }
 
 export enum Model {
@@ -55,17 +45,28 @@ export enum Model {
   FURRY_INP = "nai-diffusion-furry-3-inpainting",
 }
 
+const V4_MODELS: ReadonlySet<Model> = new Set([
+  Model.V4,
+  Model.V4_INP,
+  Model.V4_CUR,
+  Model.V4_CUR_INP,
+  Model.V4_5,
+  Model.V4_5_INP,
+  Model.V4_5_CUR,
+  Model.V4_5_CUR_INP,
+]);
+
 export function isV4Model(model: Model): boolean {
-  return (
-    model === Model.V4 ||
-    model === Model.V4_INP ||
-    model === Model.V4_CUR ||
-    model === Model.V4_CUR_INP ||
-    model === Model.V4_5 ||
-    model === Model.V4_5_INP ||
-    model === Model.V4_5_CUR ||
-    model === Model.V4_5_CUR_INP
-  );
+  return V4_MODELS.has(model);
+}
+
+/**
+ * Text generation models available through the OpenAI-compatible endpoints
+ * on https://text.novelai.net (use client.listTextModels() for the live list)
+ */
+export enum TextModel {
+  GLM_4_6 = "glm-4-6",
+  XIALONG = "xialong-v1",
 }
 
 export enum Controlnet {

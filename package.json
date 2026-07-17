@@ -1,7 +1,7 @@
 {
   "name": "nekoai-js",
   "version": "1.2.5",
-  "description": "A lightweight JavaScript/TypeScript API for NovelAI image generation and director tools",
+  "description": "A lightweight JavaScript/TypeScript API for NovelAI image generation, director tools and text generation",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
   "types": "dist/index.d.ts",
@@ -59,14 +59,13 @@
     "@types/node": "^20.10.5",
     "@typescript-eslint/eslint-plugin": "^6.15.0",
     "@typescript-eslint/parser": "^6.15.0",
-    "canvas": "^3.1.0",
     "eslint": "^8.56.0",
     "semantic-release": "^21.0.0",
     "tsup": "^8.0.1",
     "typescript": "^5.3.3",
     "@types/pako": "^2.0.1",
     "prettier": "^3.5.3",
-    "zod": "^3.22.4",
+    "vitest": "^3.2.4",
     "dotenv": "^16.5.0"
   },
   "dependencies": {
@@ -78,6 +77,6 @@
     "png-chunks-extract": "^1.0.0"
   },
   "optionalDependencies": {
-    "canvas": "^2.11.2"
+    "canvas": "^3.1.0"
   }
 }

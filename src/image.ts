@@ -3,6 +3,7 @@ import {
   saveBinaryFile,
   uint8ArrayToBase64,
   getNodePath,
+  isNodeEnvironment,
 } from "./utils";
 import { ImageOptions } from "./types";
 
@@ -69,13 +70,12 @@ export class Image {
    * @returns Promise that resolves to the full path of the saved file
    */
   async save(outputPath: string): Promise<string> {
-    if (typeof window !== "undefined") {
+    if (!isNodeEnvironment()) {
       throw new Error("save() is only available in Node.js environment");
     }
 
     try {
-      // Get path module (Node.js only)
-      const path = getNodePath();
+      const path = await getNodePath();
       if (!path) {
         throw new Error("Path module not available");
       }
@@ -84,16 +84,15 @@ export class Image {
       let fullPath: string;
       if (outputPath.endsWith("/") || !path.extname(outputPath)) {
         // It's a directory, append the filename
-        ensureDirectoryExists(outputPath);
+        await ensureDirectoryExists(outputPath);
         fullPath = path.join(outputPath, this.filename);
       } else {
         // It's a full file path
-        ensureDirectoryExists(path.dirname(outputPath));
+        await ensureDirectoryExists(path.dirname(outputPath));
         fullPath = outputPath;
       }
 
-      // Save the file
-      saveBinaryFile(this.data, fullPath);
+      await saveBinaryFile(this.data, fullPath);
       return fullPath;
     } catch (error) {
       throw new Error(`Failed to save image: ${(error as Error).message}`);

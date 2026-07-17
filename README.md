@@ -14,7 +14,7 @@
 
 ## 🌈 Introduction
 
-> 🐾 **NekoAI-JS** is a **lightweight** and **easy-to-use** JavaScript/TypeScript wrapper for NovelAI's image generation capabilities. This package makes it simple to integrate NovelAI's powerful image generation and manipulation tools into your JavaScript applications with minimal code overhead.
+> 🐾 **NekoAI-JS** is a **lightweight** and **easy-to-use** JavaScript/TypeScript wrapper for NovelAI's image and text generation capabilities. This package makes it simple to integrate NovelAI's powerful image generation, Director tools and text models into your JavaScript applications with minimal code overhead.
 >
 > Built with modern JavaScript/TypeScript features for both browser and Node.js environments, it provides full access to NovelAI's latest models (V3, V4, V4.5) and Director tools while maintaining a clean interface. This project is based on the [NekoAI-API](https://github.com/Nya-Foundation/NekoAI-API) Python package.
 
@@ -33,6 +33,8 @@
 | 🌐 **Cross-Platform**       | Works in both browser and Node.js environments.                                                        |
 | ✨ **Latest Models**        | Full support for V3, V4, and V4.5 models including multi-character generation.                         |
 | 🛠️ **Director Tools**       | Complete support for all NovelAI Director tools like line art, background removal, and emotion change. |
+| 📝 **Text Generation**      | Chat and text completions through NovelAI's OpenAI-compatible endpoints, with streaming support.       |
+| 🏷️ **Tag Suggestions**      | Query NovelAI's tag autocomplete for prompt building.                                                  |
 | 🔄 **TypeScript Support**   | Full TypeScript definitions for all API parameters and responses.                                      |
 | 🔁 **Automatic Retries**    | Built-in retry mechanism for handling rate limits and temporary API failures.                          |
 
@@ -236,25 +238,20 @@ for (const image of images) {
 
 ### Image to Image
 
-To perform `img2img` action, set `action` parameter to `Action.IMG2IMG`, and provide a source image. Use the `parseImage` utility to handle multiple image formats seamlessly.
+To perform `img2img` action, set `action` parameter to `Action.IMG2IMG`, and provide a source image. The `image` and `mask` fields accept any supported image input — a file path (Node.js), Blob, File, URL, data URL, `Uint8Array` or raw base64 — and are converted automatically.
 
 ```javascript
-import { NovelAI, Action, parseImage } from "nekoai-js";
+import { NovelAI, Action } from "nekoai-js";
 
 // Initialize client
 const client = new NovelAI({
   token: "your_access_token",
 });
 
-// Parse image using the utility (supports multiple formats)
-const sourceImage = await parseImage("./input/image.png");
-
 const images = await client.generateImage({
   prompt: "1girl, fantasy outfit",
   action: Action.IMG2IMG,
-  width: sourceImage.width,
-  height: sourceImage.height,
-  image: sourceImage.base64,
+  image: "./input/image.png", // any ImageInput format works
   strength: 0.5, // Lower = more similar to original
   noise: 0.1,
 });
@@ -535,6 +532,84 @@ const processImageUrl = async (url) => {
 };
 ```
 
+### 📝 Text Generation
+
+Generate text through NovelAI's OpenAI-compatible endpoints on `text.novelai.net`. Both one-shot and streaming modes are supported.
+
+```javascript
+import { NovelAI, TextModel } from "nekoai-js";
+
+const client = new NovelAI({ token: "your_access_token" });
+
+// List available text models
+const models = await client.listTextModels();
+
+// Chat completion (a plain string becomes a single user message)
+const completion = await client.chat("Describe a cozy tavern in one sentence.", {
+  model: TextModel.GLM_4_6,
+  max_tokens: 100,
+  temperature: 1.0,
+});
+console.log(completion.choices[0].message.content);
+
+// Full message arrays work too
+const reply = await client.chat(
+  [
+    { role: "system", content: "You are a concise storyteller." },
+    { role: "user", content: "Continue: The dragon opened one eye and" },
+  ],
+  { max_tokens: 100 },
+);
+
+// Streaming chat completion
+const stream = await client.chatStream("Tell me a short story.", {
+  max_tokens: 200,
+});
+for await (const chunk of stream) {
+  const delta = chunk.choices[0]?.delta?.content;
+  if (delta) process.stdout.write(delta);
+}
+
+// Raw text completion
+const continuation = await client.completion("The old lighthouse keeper", {
+  max_tokens: 100,
+});
+console.log(continuation.choices[0].text);
+```
+
+Generation options (`max_tokens`, `temperature`, `top_p`, `top_k`, `min_p`, `frequency_penalty`, `presence_penalty`, `stop`, `seed`, `logit_bias`, ...) are passed through to the API in OpenAI format.
+
+### 🏷️ Tag Suggestions
+
+Query NovelAI's tag autocomplete — useful for building prompt UIs:
+
+```javascript
+const suggestions = await client.suggestTags("blue hai");
+for (const s of suggestions) {
+  console.log(s.tag, s.confidence);
+}
+```
+
+### Character Reference (V4.5)
+
+V4.5 models support director reference images (character reference / precise reference). Pass any supported image input; for character reference the image should be 1024x1536, 1536x1024 or 1472x1472 (padded with black to fit):
+
+```javascript
+const images = await client.generateImage({
+  prompt: "1girl, dancing in the rain",
+  model: Model.V4_5,
+  director_reference_images: ["./reference/character.png"],
+  director_reference_descriptions: [
+    {
+      caption: { base_caption: "character&style", char_captions: [] },
+    },
+  ],
+  director_reference_information_extracted: [1],
+  director_reference_strength_values: [1],
+  director_reference_secondary_strength_values: [1], // fidelity
+});
+```
+
 ### Using Custom Hosts
 
 NekoAI-JS supports using custom hosts for API requests. This is useful if you need to use a different endpoint or if you're using a proxy server.
@@ -590,7 +665,7 @@ const client = new NovelAI({
     maxRetries: 5, // Maximum 5 retry attempts
     baseDelay: 2000, // Start with 2 second delay
     maxDelay: 60000, // Maximum delay of 1 minute
-    retryStatusCodes: [429], // Only retry on rate limit errors
+    retryStatusCodes: [429, 500, 502, 503, 504], // Status codes that trigger a retry
   },
 });
 

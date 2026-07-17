@@ -6,37 +6,55 @@ import {
   DirectorTools,
   EmotionOptions,
   EmotionLevel,
+  Model,
+  TextModel,
   isV4Model,
 } from "./constants";
 import { Image, MsgpackEvent, EventType } from "./image";
 import {
+  ChatCompletion,
+  ChatCompletionChunk,
+  ChatMessage,
+  Completion,
   DirectorRequest,
   ImageInput,
   Metadata,
   NovelAIOptions,
   NovelAIResponse,
   RetryConfig,
+  TagSuggestion,
+  TextGenerationOptions,
 } from "./types";
 import {
+  apiErrorFromResponse,
   calculateCost,
   createFilename,
+  getNodeFs,
   handleResponse,
+  isNodeEnvironment,
   parseImage,
   prepareMetadataForApi,
-  withRetry,
   prepHeaders,
+  SSEStream,
   StreamingMsgpackParser,
   StreamingSSEParser,
   parseStreamEvents,
+  timestampString,
+  uint8ArrayToBase64,
+  withRetry,
 } from "./utils";
 import { metadataProcessor } from "./metadata";
 
+/** Maximum number of vibe tokens kept in the in-memory cache */
+const VIBE_CACHE_LIMIT = 100;
+
 /**
- * NovelAI client for interacting with the NovelAI image generation API
+ * NovelAI client for image generation, director tools and text generation
  */
 export class NovelAI {
   private token: string;
-  private host: Host;
+  private host: string;
+  private textHost: string;
   private timeout: number;
   private retryConfig?: RetryConfig;
 
@@ -45,7 +63,6 @@ export class NovelAI {
 
   /**
    * Cache of vibe tokens to avoid re-encoding the same images
-   * @private
    */
   private vibeCache: Map<string, string> = new Map();
 
@@ -54,20 +71,20 @@ export class NovelAI {
    *
    * @param options - Client configuration options
    * @param options.token - NovelAI access token
-   * @param options.host - API host to use (default: Host.WEB)
-   * @param options.timeout - Request timeout in milliseconds (default: 30000)
+   * @param options.host - API host for image endpoints (default: Host.WEB)
+   * @param options.textHost - API host for text endpoints (default: Host.TEXT)
+   * @param options.timeout - Request timeout in milliseconds (default: 120000)
    * @param options.retry - Configuration for request retries (default: enabled with 3 retries)
    * @param options.verbose - Whether to log additional information (default: false)
-  
    */
   constructor(options: NovelAIOptions) {
     this.token = options.token;
     this.host = options.host || Host.WEB;
-    this.timeout = options.timeout || 30000;
+    this.textHost = options.textHost || Host.TEXT;
+    this.timeout = options.timeout || 120000;
     this.retryConfig = options.retry;
     this.verbose = options.verbose || false;
 
-    // Set up default headers
     this.headers = {
       ...HEADERS,
       Authorization: `Bearer ${this.token}`,
@@ -78,60 +95,147 @@ export class NovelAI {
    * Generate images using NovelAI's API
    *
    * @param metadata - Generation parameters
-   * @param stream - Whether to stream intermediate steps for V4 models (default: false)
-   * @param isOpus - Whether the user has Opus subscription (for cost calculation, default: false)
-   * @returns Promise resolving to an array of Image objects or AsyncGenerator of MsgpackEvent objects
+   * @param stream - Whether to stream intermediate steps (V4/V4.5 models only, default: false)
+   * @param isOpus - Whether the user has Opus subscription (for cost estimation logging, default: false)
+   * @returns Array of Image objects, or an AsyncGenerator of MsgpackEvent objects when streaming
    */
+  generateImage(metadata: Metadata): Promise<Image[]>;
+  generateImage(
+    metadata: Metadata,
+    stream: false,
+    isOpus?: boolean,
+  ): Promise<Image[]>;
+  generateImage(
+    metadata: Metadata,
+    stream: true,
+    isOpus?: boolean,
+  ): Promise<AsyncGenerator<MsgpackEvent, void, unknown>>;
+  generateImage(
+    metadata: Metadata,
+    stream: boolean,
+    isOpus?: boolean,
+  ): Promise<Image[] | AsyncGenerator<MsgpackEvent, void, unknown>>;
   async generateImage(
     metadata: Metadata,
     stream: boolean = false,
     isOpus: boolean = false,
-    forceZip: boolean = false,
   ): Promise<Image[] | AsyncGenerator<MsgpackEvent, void, unknown>> {
-    // Process and validate the metadata
-    const processedMetadata = this.processMetadata(metadata);
+    const resolved = await this.resolveImageInputs(metadata);
+    const processedMetadata = metadataProcessor.processMetadata(resolved);
 
-    // Calculate and log cost if verbose
     if (this.verbose) {
       const cost = calculateCost(processedMetadata, isOpus);
       console.info(`Generating image... estimated Anlas cost: ${cost}`);
     }
 
-    // Handle vibe transfer for V4 models
-    if (processedMetadata.reference_information_extracted_multiple) {
-      await this.encodeVibe(processedMetadata);
+    // Encode vibe transfer reference images for V4 models
+    await this.encodeVibe(processedMetadata);
+
+    const payload = prepareMetadataForApi(processedMetadata);
+    const isV4 = isV4Model(processedMetadata.model!);
+
+    if (stream) {
+      if (!isV4) {
+        throw new Error(
+          "Streaming is only supported for V4/V4.5 models; V3 models return the final image only.",
+        );
+      }
+      // Open the connection (with retry) before returning the generator so
+      // connection/HTTP errors are retried and surface here, not mid-iteration
+      const response = await withRetry(
+        () => this.openStream(`${this.host}${Endpoint.IMAGE_STREAM}`, payload),
+        this.retryConfig,
+      );
+      return this.parseEventStream(response, payload.action);
     }
 
-    // Prepare the API request payload
-    const payload = prepareMetadataForApi(processedMetadata);
-
     return withRetry(async () => {
-      const isV4 =
-        processedMetadata.model && isV4Model(processedMetadata.model);
-
-      if (isV4 && !forceZip) {
-        // V4 models use streaming msgpack endpoint
-        return stream
-          ? this.streamV4Events(payload)
-          : this.processV4Response(payload);
-      } else {
-        // V3 models use regular ZIP endpoint
-        return this.processV3Response(payload);
+      try {
+        if (isV4) {
+          const response = await this.request(
+            `${this.host}${Endpoint.IMAGE_STREAM}`,
+            payload,
+          );
+          return await this.extractImagesFromMsgpack(response);
+        }
+        const response = await this.request(
+          `${this.host}${Endpoint.IMAGE}`,
+          payload,
+        );
+        return await this.extractImagesFromZip(response);
+      } catch (error) {
+        throw this.handleRequestError(error);
       }
     }, this.retryConfig);
   }
 
   /**
-   * Makes a request to the NovelAI API with appropriate headers and timeout handling
-   *
-   * @param url - The endpoint URL to send the request to
-   * @param payload - The request payload
-   * @returns Promise resolving to the API response
-   * @private
+   * Resolve all image-bearing metadata fields to raw base64 strings,
+   * accepting any supported ImageInput format.
    */
-  private async makeRequest(
+  private async resolveImageInputs(metadata: Metadata): Promise<Metadata> {
+    const result: Metadata = { ...metadata };
+
+    result.image = await this.resolveToBase64(result.image);
+    result.mask = await this.resolveToBase64(result.mask);
+
+    if (result.reference_image_multiple) {
+      result.reference_image_multiple = await Promise.all(
+        result.reference_image_multiple.map((img) =>
+          this.resolveToBase64(img) as Promise<string>,
+        ),
+      );
+    }
+
+    if (result.director_reference_images) {
+      result.director_reference_images = await Promise.all(
+        result.director_reference_images.map((img) =>
+          this.resolveToBase64(img) as Promise<string>,
+        ),
+      );
+    }
+
+    return result;
+  }
+
+  /**
+   * Convert an ImageInput to a raw base64 string.
+   * Strings are treated as data URLs, remote URLs, file paths (Node.js, when
+   * the file exists), or raw base64 (fallback) — in that order.
+   */
+  private async resolveToBase64(
+    input?: ImageInput,
+  ): Promise<string | undefined> {
+    if (input == null) return undefined;
+
+    if (typeof input === "string") {
+      if (input.startsWith("data:")) {
+        const comma = input.indexOf(",");
+        return comma >= 0 ? input.slice(comma + 1) : input;
+      }
+      if (/^(https?|blob):/.test(input)) {
+        return (await parseImage(input)).base64;
+      }
+      if (isNodeEnvironment()) {
+        const fs = await getNodeFs();
+        if (fs?.existsSync(input)) {
+          return (await parseImage(input)).base64;
+        }
+      }
+      // Assume the string is already raw base64
+      return input;
+    }
+
+    return (await parseImage(input)).base64;
+  }
+
+  /**
+   * Make a buffered request to the NovelAI API.
+   * The timeout covers the time until the response is fully received.
+   */
+  private async request(
     url: string,
-    payload: any,
+    payload: unknown,
   ): Promise<NovelAIResponse> {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), this.timeout);
@@ -139,82 +243,92 @@ export class NovelAI {
     const jsonPayload = JSON.stringify(payload);
     const headers = prepHeaders(this.headers);
 
-
     if (this.verbose) {
-      let cleanPlayload = { ...payload };
-      cleanPlayload.parameters = {
-        ...cleanPlayload.parameters,
-        image: !!cleanPlayload?.parameters?.image ? ("included with " + cleanPlayload.parameters.image.length + " bytes") : undefined,
-        mask: !!cleanPlayload?.parameters?.mask ? ("included with " + cleanPlayload.parameters.mask.length + " bytes") : undefined,
-      }
-      console.log(`[Headers] for image generation:`, headers);
-      console.info(`[Payload] for image generation:`, JSON.stringify(cleanPlayload));
+      console.debug(`[Request] ${url}`, jsonPayload);
     }
 
-    // process.exit(-1);
-
     try {
-      // Make the API request
       const response = await fetch(url, {
         method: "POST",
-        headers: headers,
+        headers,
         body: jsonPayload,
         signal: controller.signal,
       });
 
-      // Handle the response
-      const apiResponse = await handleResponse(response);
-
-      return apiResponse;
+      return await handleResponse(response);
     } finally {
       clearTimeout(timeoutId);
     }
   }
 
   /**
-   * Process V3 model response (ZIP format)
-   *
-   * @param payload - The request payload
-   * @returns Promise resolving to an array of Image objects
-   * @private
+   * Open a streaming request. The timeout covers time-to-headers only, so
+   * long-running streams are not aborted mid-generation.
    */
-  private async processV3Response(payload: any): Promise<Image[]> {
+  private async openStream(url: string, payload: unknown): Promise<Response> {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), this.timeout);
+
+    const jsonPayload = JSON.stringify(payload);
+    const headers = prepHeaders(this.headers);
+
+    if (this.verbose) {
+      console.debug(`[Stream] ${url}`, jsonPayload);
+    }
+
     try {
-      const response = await this.makeRequest(
-        `${this.host}${Endpoint.IMAGE}`,
-        payload,
-      );
-      return this.extractImagesFromZip(response);
+      const response = await fetch(url, {
+        method: "POST",
+        headers,
+        body: jsonPayload,
+        signal: controller.signal,
+      });
+
+      if (!response.ok) {
+        throw await apiErrorFromResponse(response);
+      }
+      if (!response.body) {
+        throw new Error("No response body available for streaming");
+      }
+
+      return response;
     } catch (error) {
       throw this.handleRequestError(error);
+    } finally {
+      clearTimeout(timeoutId);
     }
   }
 
   /**
-   * Process V4 model response (msgpack format)
-   *
-   * @param payload - The request payload
-   * @returns Promise resolving to an array of Image objects
-   * @private
+   * Parse a streaming response body into MsgpackEvent objects
    */
-  private async processV4Response(payload: any): Promise<Image[]> {
+  private async *parseEventStream(
+    response: Response,
+    action: string,
+  ): AsyncGenerator<MsgpackEvent, void, unknown> {
+    // Inpainting streams SSE; everything else streams length-prefixed msgpack
+    const parser =
+      action === "infill"
+        ? new StreamingSSEParser()
+        : new StreamingMsgpackParser();
+
+    const reader = response.body!.getReader();
     try {
-      const response = await this.makeRequest(
-        `${this.host}${Endpoint.IMAGE_STREAM}`,
-        payload,
-      );
-      return this.extractImagesFromMsgpack(response);
-    } catch (error) {
-      throw this.handleRequestError(error);
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        yield* parser.feedChunk(value);
+      }
+      if (parser instanceof StreamingSSEParser) {
+        yield* parser.flush();
+      }
+    } finally {
+      reader.releaseLock();
     }
   }
 
   /**
    * Extract images from ZIP response (V3 models)
-   *
-   * @param apiResponse - The API response containing ZIP data
-   * @returns Promise resolving to an array of Image objects
-   * @private
    */
   private async extractImagesFromZip(
     apiResponse: NovelAIResponse,
@@ -222,19 +336,16 @@ export class NovelAI {
     const arrayBuffer = await this.getResponseBuffer(apiResponse);
     const zip = await JSZip.loadAsync(arrayBuffer);
     const images: Image[] = [];
-    const hostName = this.host.toLowerCase();
     let index = 0;
 
     for (const filename of Object.keys(zip.files)) {
       const zipObj = zip.files[filename];
       if (!zipObj.dir) {
         const data = await zipObj.async("uint8array");
-        const timestamp = this.generateTimestamp();
-
         images.push(
           new Image({
-            filename: `${timestamp}_${hostName}_p${index}.png`,
-            data: data,
+            filename: `${timestampString()}_p${index}.png`,
+            data,
           }),
         );
         index++;
@@ -245,19 +356,13 @@ export class NovelAI {
   }
 
   /**
-   * Extract images from msgpack response (V4 models)
-   *
-   * @param apiResponse - The API response containing msgpack data
-   * @returns Promise resolving to an array of Image objects
-   * @private
+   * Extract final images from a buffered event stream response (V4 models)
    */
   private async extractImagesFromMsgpack(
     apiResponse: NovelAIResponse,
   ): Promise<Image[]> {
     const arrayBuffer = await this.getResponseBuffer(apiResponse);
-    const msgpackData = new Uint8Array(arrayBuffer);
-
-    const events = parseStreamEvents(msgpackData);
+    const events = parseStreamEvents(new Uint8Array(arrayBuffer));
 
     return events
       .filter((event) => event.event_type === EventType.FINAL)
@@ -266,10 +371,6 @@ export class NovelAI {
 
   /**
    * Get response data as ArrayBuffer
-   *
-   * @param apiResponse - The API response
-   * @returns Promise resolving to ArrayBuffer
-   * @private
    */
   private async getResponseBuffer(
     apiResponse: NovelAIResponse,
@@ -278,50 +379,20 @@ export class NovelAI {
       return apiResponse.data;
     } else if (apiResponse.data) {
       return await new Response(apiResponse.data).arrayBuffer();
-    } else {
-      throw new Error("No data received from API");
     }
+    throw new Error("No data received from API");
   }
 
   /**
-   * Generate timestamp for filename
-   *
-   * @returns Formatted timestamp string
-   * @private
-   */
-  private generateTimestamp(): string {
-    return new Date()
-      .toISOString()
-      .replace(/[-:]/g, "")
-      .replace("T", "_")
-      .substring(0, 15);
-  }
-
-  /**
-   * Handle request errors with proper timeout detection
-   *
-   * @param error - The error to handle
-   * @returns Formatted error
-   * @private
+   * Convert AbortError into a friendly timeout message
    */
   private handleRequestError(error: any): Error {
-    if (error.name === "AbortError") {
+    if (error?.name === "AbortError") {
       return new Error(
-        "Request timed out, please try again. If the problem persists, consider setting a higher 'timeout' value when initiating the NovelAI client.",
+        `Request timed out after ${this.timeout}ms. Consider setting a higher 'timeout' value when creating the NovelAI client.`,
       );
     }
     return error;
-  }
-
-  /**
-   * Process and validate metadata before sending to API
-   *
-   * @param metadata - User-provided metadata
-   * @returns Processed metadata object
-   */
-  private processMetadata(metadata: Metadata): Metadata {
-    // Use the metadata processor to handle all processing logic
-    return metadataProcessor.processMetadata(metadata);
   }
 
   /**
@@ -333,7 +404,7 @@ export class NovelAI {
   async useDirectorTool(request: DirectorRequest): Promise<Image> {
     return withRetry(async () => {
       try {
-        const response = await this.makeRequest(
+        const response = await this.request(
           `${this.host}${Endpoint.DIRECTOR}`,
           request,
         );
@@ -342,16 +413,18 @@ export class NovelAI {
           throw new Error("Received empty response from the server.");
         }
 
-        // Try to extract as ZIP first, fallback to raw data
+        // Buffer once — the response stream can only be consumed a single time
         const arrayBuffer = await this.getResponseBuffer(response);
         let data: Uint8Array;
 
         try {
-          // Director tools return ZIP files, so we can reuse extractImagesFromZip
-          const images = await this.extractImagesFromZip(response);
-          // Director tools typically return a single image, so take the first one
-          data = images[0]?.data || new Uint8Array(arrayBuffer);
-        } catch (error) {
+          // Director tools return ZIP files containing a single image
+          const zip = await JSZip.loadAsync(arrayBuffer);
+          const firstFile = Object.values(zip.files).find((f) => !f.dir);
+          data = firstFile
+            ? await firstFile.async("uint8array")
+            : new Uint8Array(arrayBuffer);
+        } catch {
           // If ZIP extraction fails, treat as raw image data
           data = new Uint8Array(arrayBuffer);
         }
@@ -368,12 +441,6 @@ export class NovelAI {
 
   /**
    * Create a director tool request with common parameters
-   *
-   * @param image - Image input
-   * @param reqType - Director tool type
-   * @param additionalParams - Additional parameters for the request
-   * @returns Promise resolving to an Image object
-   * @private
    */
   private async createDirectorRequest(
     image: ImageInput,
@@ -382,22 +449,17 @@ export class NovelAI {
   ): Promise<Image> {
     const parsedImage = await parseImage(image);
 
-    const request: any = {
+    return this.useDirectorTool({
       req_type: reqType,
       width: parsedImage.width,
       height: parsedImage.height,
       image: parsedImage.base64,
       ...additionalParams,
-    };
-
-    return this.useDirectorTool(request);
+    } as DirectorRequest);
   }
 
   /**
    * Convert an image to line art
-   *
-   * @param image - Image input (path, Blob, File, URL, etc.)
-   * @returns Promise resolving to an Image object
    */
   async lineArt(image: ImageInput): Promise<Image> {
     return this.createDirectorRequest(image, DirectorTools.LINEART);
@@ -405,9 +467,6 @@ export class NovelAI {
 
   /**
    * Convert an image to sketch
-   *
-   * @param image - Image input (path, Blob, File, URL, etc.)
-   * @returns Promise resolving to an Image object
    */
   async sketch(image: ImageInput): Promise<Image> {
     return this.createDirectorRequest(image, DirectorTools.SKETCH);
@@ -415,9 +474,6 @@ export class NovelAI {
 
   /**
    * Remove the background from an image
-   *
-   * @param image - Image input (path, Blob, File, URL, etc.)
-   * @returns Promise resolving to an Image object
    */
   async backgroundRemoval(image: ImageInput): Promise<Image> {
     return this.createDirectorRequest(image, DirectorTools.BACKGROUND_REMOVAL);
@@ -425,9 +481,6 @@ export class NovelAI {
 
   /**
    * Declutter an image (remove noise, distractions, etc.)
-   *
-   * @param image - Image input (path, Blob, File, URL, etc.)
-   * @returns Promise resolving to an Image object
    */
   async declutter(image: ImageInput): Promise<Image> {
     return this.createDirectorRequest(image, DirectorTools.DECLUTTER);
@@ -439,7 +492,6 @@ export class NovelAI {
    * @param image - Image input (path, Blob, File, URL, etc.)
    * @param prompt - Additional prompt to add to the request
    * @param defry - Defry value (0-5, default: 0)
-   * @returns Promise resolving to an Image object
    */
   async colorize(
     image: ImageInput,
@@ -458,8 +510,7 @@ export class NovelAI {
    * @param image - Image input (path, Blob, File, URL, etc.)
    * @param emotion - Target emotion to change to
    * @param prompt - Additional prompt to add to the request
-   * @param emotionLevel - Level of emotion change (0-5, optional)
-   * @returns Promise resolving to an Image object
+   * @param emotionLevel - Strength of the emotion change (default: NORMAL)
    */
   async changeEmotion(
     image: ImageInput,
@@ -467,23 +518,50 @@ export class NovelAI {
     prompt: string = "",
     emotionLevel: EmotionLevel = EmotionLevel.NORMAL,
   ): Promise<Image> {
-    const finalPrompt = `${emotion};;${prompt}`;
     return this.createDirectorRequest(image, DirectorTools.EMOTION, {
-      prompt: finalPrompt,
-      defry: emotionLevel ?? EmotionLevel.NORMAL,
+      prompt: `${emotion};;${prompt}`,
+      defry: emotionLevel,
     });
   }
 
   /**
-   * Encode images to vibe tokens using the /encode-vibe endpoint
-   * Uses caching to avoid unnecessary API calls for previously processed images
+   * Get tag suggestions for a partial tag query
    *
-   * @param metadata - Metadata object to update with vibe tokens
-   * @returns Promise resolving when encoding is complete
-   * @private
+   * @param prompt - The incomplete tag query
+   * @param model - The image model to get suggestions for (default: V4.5)
+   * @param lang - Query language, "en" or "jp" (default: "en")
+   * @returns Promise resolving to an array of tag suggestions
+   */
+  async suggestTags(
+    prompt: string,
+    model: Model = Model.V4_5,
+    lang?: "en" | "jp",
+  ): Promise<TagSuggestion[]> {
+    const url = new URL(`${this.host}${Endpoint.SUGGEST_TAGS}`);
+    url.searchParams.set("model", model);
+    url.searchParams.set("prompt", prompt);
+    if (lang) url.searchParams.set("lang", lang);
+
+    const result = await withRetry(async () => {
+      const response = await fetch(url, {
+        method: "GET",
+        headers: prepHeaders(this.headers),
+      });
+      if (!response.ok) {
+        throw await apiErrorFromResponse(response);
+      }
+      return response.json();
+    }, this.retryConfig);
+
+    const tags = (result as any)?.tags;
+    return Array.isArray(tags) ? tags : [];
+  }
+
+  /**
+   * Encode images to vibe tokens using the /encode-vibe endpoint.
+   * Uses caching to avoid unnecessary API calls for previously processed images.
    */
   private async encodeVibe(metadata: Metadata): Promise<void> {
-    // Skip if model is not V4 or no reference images
     if (
       !metadata.model ||
       !isV4Model(metadata.model) ||
@@ -492,171 +570,263 @@ export class NovelAI {
       return;
     }
 
-    const referenceImageMultiple: string[] = [];
+    const encoded: string[] = [];
 
-    // Process each reference image
     for (let i = 0; i < metadata.reference_image_multiple.length; i++) {
-      const refImage = metadata.reference_image_multiple[i];
+      const refImage = metadata.reference_image_multiple[i] as string;
       const refInfoExtracted =
         metadata.reference_information_extracted_multiple?.[i] ?? 1.0;
 
-      // Create cache key and check cache
       const imageHash = await this.getImageHash(refImage);
       const cacheKey = `${imageHash}:${refInfoExtracted}:${metadata.model}`;
 
       let vibeToken = this.vibeCache.get(cacheKey);
-
       if (!vibeToken) {
         vibeToken = await this.fetchVibeToken(
           refImage,
           refInfoExtracted,
           metadata.model,
         );
+        if (this.vibeCache.size >= VIBE_CACHE_LIMIT) {
+          this.vibeCache.delete(this.vibeCache.keys().next().value!);
+        }
         this.vibeCache.set(cacheKey, vibeToken);
       }
 
-      referenceImageMultiple.push(vibeToken);
+      encoded.push(vibeToken);
     }
 
-    // Update metadata
-    metadata.reference_image_multiple = referenceImageMultiple;
+    metadata.reference_image_multiple = encoded;
     metadata.reference_information_extracted_multiple = undefined;
   }
 
   /**
-   * Fetch vibe token from API
-   *
-   * @param image - Base64 image data
-   * @param informationExtracted - Information extraction level
-   * @param model - Model being used
-   * @returns Promise resolving to vibe token
-   * @private
+   * Fetch vibe token from the API
    */
   private async fetchVibeToken(
     image: string,
     informationExtracted: number,
     model: string,
   ): Promise<string> {
-    const payload = {
-      image,
-      information_extracted: informationExtracted,
-      model,
-    };
-
     try {
-      const response = await this.makeRequest(
+      const response = await this.request(
         `${this.host}${Endpoint.ENCODE_VIBE}`,
-        payload,
+        {
+          image,
+          information_extracted: informationExtracted,
+          model,
+        },
       );
+      // The endpoint returns the vibe token as raw binary; the generation
+      // payload expects it base64-encoded
       const buffer = await this.getResponseBuffer(response);
-      return new TextDecoder().decode(buffer);
+      return uint8ArrayToBase64(new Uint8Array(buffer));
     } catch (error) {
       throw this.handleRequestError(error);
     }
   }
 
   /**
-   * Create a hash for an image to use as a cache key
-   *
-   * @param base64Image - Base64 encoded image data
-   * @returns Promise resolving to a hash string
-   * @private
+   * SHA-256 hash of a base64 image, used as vibe cache key.
+   * Uses Web Crypto, available in browsers and Node.js 18+.
    */
   private async getImageHash(base64Image: string): Promise<string> {
-    // Handle Node.js environment
-    if (typeof window === "undefined") {
-      try {
-        const crypto = require("crypto");
-        const imageBytes = Buffer.from(base64Image, "base64");
-        return crypto.createHash("sha256").update(imageBytes).digest("hex");
-      } catch (e) {
-        throw new Error("Failed to hash image: " + e);
-      }
+    const binaryString = atob(base64Image);
+    const bytes = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
     }
-    // Handle browser environment
-    else {
-      try {
-        const imageBytes = atob(base64Image);
-        const uint8Array = new Uint8Array(imageBytes.length);
-        for (let i = 0; i < imageBytes.length; i++) {
-          uint8Array[i] = imageBytes.charCodeAt(i);
-        }
 
-        const hashBuffer = await crypto.subtle.digest("SHA-256", uint8Array);
-        const hashArray = Array.from(new Uint8Array(hashBuffer));
-        return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
-      } catch (e) {
-        throw new Error("Failed to hash image: " + e);
+    const digest = await crypto.subtle.digest("SHA-256", bytes);
+    return Array.from(new Uint8Array(digest))
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
+  }
+
+  // ---- Text generation (OpenAI-compatible endpoints) ----
+
+  /**
+   * Generate a chat completion using NovelAI's text models
+   *
+   * @param messages - Chat messages, or a plain string treated as a single user message
+   * @param options - Generation options (model, max_tokens, temperature, ...)
+   * @returns Promise resolving to a ChatCompletion in OpenAI format
+   */
+  async chat(
+    messages: string | ChatMessage[],
+    options: TextGenerationOptions = {},
+  ): Promise<ChatCompletion> {
+    // The non-streaming chat endpoint currently returns raw token ids
+    // without decoded text, so assemble the completion from the streaming
+    // endpoint instead.
+    const stream = await this.chatStream(messages, options);
+
+    let id = "";
+    let model = "";
+    let created = 0;
+    let role: ChatMessage["role"] = "assistant";
+    let content = "";
+    let finishReason: string | null = null;
+    let usage: ChatCompletion["usage"];
+
+    for await (const chunk of stream) {
+      id = id || chunk.id;
+      model = model || chunk.model;
+      created = created || chunk.created;
+      const choice = chunk.choices?.[0];
+      if (choice?.delta?.role) role = choice.delta.role;
+      if (choice?.delta?.content) content += choice.delta.content;
+      if (choice?.finish_reason) finishReason = choice.finish_reason;
+      const chunkUsage = (chunk as any).usage;
+      if (chunkUsage) usage = chunkUsage;
+    }
+
+    return {
+      id,
+      object: "chat.completion",
+      created,
+      model,
+      choices: [
+        { index: 0, message: { role, content }, finish_reason: finishReason },
+      ],
+      usage,
+    };
+  }
+
+  /**
+   * Generate a chat completion, streaming the response chunk by chunk
+   *
+   * @param messages - Chat messages, or a plain string treated as a single user message
+   * @param options - Generation options (model, max_tokens, temperature, ...)
+   * @returns AsyncGenerator of ChatCompletionChunk objects in OpenAI format
+   */
+  async chatStream(
+    messages: string | ChatMessage[],
+    options: TextGenerationOptions = {},
+  ): Promise<AsyncGenerator<ChatCompletionChunk, void, unknown>> {
+    const body = {
+      ...options,
+      model: options.model ?? TextModel.GLM_4_6,
+      messages: this.normalizeMessages(messages),
+      stream: true,
+    };
+
+    const response = await withRetry(
+      () =>
+        this.openStream(`${this.textHost}${Endpoint.CHAT_COMPLETIONS}`, body),
+      this.retryConfig,
+    );
+
+    return this.parseChatStream(response);
+  }
+
+  /**
+   * Generate a raw text completion using NovelAI's text models
+   *
+   * @param prompt - The prompt to continue
+   * @param options - Generation options (model, max_tokens, temperature, ...)
+   * @returns Promise resolving to a Completion in OpenAI format
+   */
+  async completion(
+    prompt: string,
+    options: TextGenerationOptions = {},
+  ): Promise<Completion> {
+    const body = {
+      ...options,
+      model: options.model ?? TextModel.GLM_4_6,
+      prompt,
+      stream: false,
+    };
+    return this.requestJson(`${this.textHost}${Endpoint.COMPLETIONS}`, body);
+  }
+
+  /**
+   * List available text generation models
+   *
+   * @returns Promise resolving to an array of model ids
+   */
+  async listTextModels(): Promise<string[]> {
+    const result = await withRetry(async () => {
+      const response = await fetch(
+        `${this.textHost}${Endpoint.TEXT_MODELS}`,
+        { method: "GET", headers: prepHeaders(this.headers) },
+      );
+      if (!response.ok) {
+        throw await apiErrorFromResponse(response);
       }
+      return response.json();
+    }, this.retryConfig);
+
+    const data = (result as any)?.data;
+    return Array.isArray(data) ? data.map((m: any) => m.id) : [];
+  }
+
+  private normalizeMessages(
+    messages: string | ChatMessage[],
+  ): ChatMessage[] {
+    return typeof messages === "string"
+      ? [{ role: "user", content: messages }]
+      : messages;
+  }
+
+  /**
+   * Parse an OpenAI-style SSE stream into completion chunks
+   */
+  private async *parseChatStream(
+    response: Response,
+  ): AsyncGenerator<ChatCompletionChunk, void, unknown> {
+    const sse = new SSEStream();
+    const reader = response.body!.getReader();
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        for (const event of sse.feed(value)) {
+          if (event.data === "[DONE]") return;
+          try {
+            yield JSON.parse(event.data);
+          } catch (error) {
+            console.warn("Failed to parse chat stream chunk:", error);
+          }
+        }
+      }
+    } finally {
+      reader.releaseLock();
     }
   }
 
   /**
-   * Stream V4 events in real-time as they arrive from the server
-   *
-   * @param payload - The request payload
-   * @returns AsyncGenerator yielding MsgpackEvent objects in real-time
-   * @private
+   * Make a JSON request with timeout, retry and error handling
    */
-  private async *streamV4Events(
-    payload: any,
-  ): AsyncGenerator<MsgpackEvent, void, unknown> {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), this.timeout);
+  private async requestJson<T>(url: string, payload: unknown): Promise<T> {
+    return withRetry(async () => {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), this.timeout);
 
-    const jsonPayload = JSON.stringify(payload);
-    const headers = prepHeaders(this.headers);
-
-
-    if (this.verbose) {
-      console.log(`[Headers] for image generation:`, headers);
-      console.info(`[Payload] for image generation:`, jsonPayload);
-    }
-
-    try {
-      // Make the API request with streaming
-      const response = await fetch(`${this.host}${Endpoint.IMAGE_STREAM}`, {
-        method: "POST",
-        headers: headers,
-        body: jsonPayload,
-        signal: controller.signal,
-      });
-
-      if (!response.ok) {
-        throw new Error(
-          `HTTP Error: ${response.status} ${response.statusText}`,
-        );
-      }
-
-      if (!response.body) {
-        throw new Error("No response body available for streaming");
-      }
-
-      console.log(`[Streaming] Started processing V4 events for action: ${payload.action}`);
-      // Create a streaming msgpack parser
-      const parser = payload.action === "infill" ? new StreamingSSEParser() : new StreamingMsgpackParser();
-
-      // Process chunks as they arrive
-      const reader = response.body.getReader();
       try {
-        while (true) {
-          const { done, value } = await reader.read();
-
-          if (done) {
-            break;
-          }
-
-          // Feed chunk to parser and yield any complete events
-          for await (const event of parser.feedChunk(value)) {
-            yield event;
-          }
+        if (this.verbose) {
+          console.debug(`[Request] ${url}`, JSON.stringify(payload));
         }
-      } finally {
-        reader.releaseLock();
-      }
-    } finally {
-      clearTimeout(timeoutId);
-    }
-  }
 
+        const response = await fetch(url, {
+          method: "POST",
+          headers: prepHeaders(this.headers),
+          body: JSON.stringify(payload),
+          signal: controller.signal,
+        });
+
+        if (!response.ok) {
+          throw await apiErrorFromResponse(response);
+        }
+
+        return (await response.json()) as T;
+      } catch (error) {
+        throw this.handleRequestError(error);
+      } finally {
+        clearTimeout(timeoutId);
+      }
+    }, this.retryConfig);
+  }
 }

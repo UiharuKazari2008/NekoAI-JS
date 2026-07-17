@@ -1,19 +1,12 @@
 import {
   Action,
   Controlnet,
-  EmotionLevel,
-  EmotionOptions,
   Host,
   Model,
   Noise,
   Resolution,
   Sampler,
 } from "./constants";
-
-// User related types
-export interface User {
-  token: string;
-}
 
 /**
  * Configuration for API request retries
@@ -46,8 +39,7 @@ export interface RetryConfig {
 
   /**
    * HTTP status codes that should trigger a retry
-   * By default, retries on rate limits (429) and server errors (500-599)
-   * @default [429, 500, 501, 502, 503, 504, 507, 508, 509]
+   * @default [429, 500, 502, 503, 504]
    */
   retryStatusCodes?: number[];
 }
@@ -63,12 +55,12 @@ export interface PositionCoords {
  * This allows images to be passed in various formats for cross-platform compatibility
  */
 export type ImageInput =
-  | string // Path (Node.js) or Data URL (browser)
+  | string // Path (Node.js), Data URL, remote URL, or raw base64
   | Blob // Browser native Blob
   | File // Browser File API
   | ArrayBuffer // Raw binary data
   | Uint8Array // Raw binary data
-  | { data: Uint8Array } // Internal format
+  | { data: Uint8Array } // Internal format (e.g. a generated Image)
   | { url: string } // Remote URL
   | HTMLImageElement // Browser DOM Image element
   | HTMLCanvasElement; // Browser Canvas element
@@ -84,49 +76,55 @@ export interface ParsedImage {
 
 /**
  * Character caption for V4 prompts
- * Maps to char_caption and centers in the API
  */
 export interface CharacterCaption {
-  char_caption: string; // Will be converted to char_caption
+  char_caption: string;
   centers: PositionCoords[];
 }
 
 /**
- * Character prompt for V4.5 multi-character generation
+ * Character prompt for V4/V4.5 multi-character generation
  */
 export interface CharacterPrompt {
   prompt: string;
-  uc: string;
-  center: PositionCoords;
+  uc?: string;
+  center?: PositionCoords;
   enabled?: boolean;
 }
 
 /**
  * V4 caption format for prompts
- * Maps to base_caption and char_captions in the API
  */
 export interface V4CaptionFormat {
-  base_caption: string; // Will be converted to base_caption
-  char_captions: CharacterCaption[]; // Will be converted to char_captions
+  base_caption: string;
+  char_captions: CharacterCaption[];
 }
 
 /**
  * V4 prompt format with multi-character support
- * Maps to caption, use_coords and use_order in the API
  */
 export interface V4PromptFormat {
   caption: V4CaptionFormat;
-  use_coords: boolean; // Will be converted to use_coords
-  use_order: boolean; // Will be converted to use_order
+  use_coords: boolean;
+  use_order: boolean;
 }
 
 /**
  * V4 format for negative prompts
- * Maps to caption and legacy_uc in the API
  */
 export interface V4NegativePromptFormat {
   caption: V4CaptionFormat;
-  legacy_uc: boolean; // Will be converted to legacy_uc
+  legacy_uc: boolean;
+}
+
+/**
+ * Condition input used by director reference (character reference) parameters
+ */
+export interface V4ConditionInput {
+  caption: V4CaptionFormat;
+  legacy_uc?: boolean;
+  use_coords?: boolean;
+  use_order?: boolean;
 }
 
 export interface V4Img2Img {
@@ -145,50 +143,65 @@ export interface DirectorReferenceDescription {
 // Core metadata
 export interface Metadata {
   // General parameters
-  prompt: string;
-  model: Model;
-  action: Action;
+  prompt?: string;
+  model?: Model;
+  action?: Action;
   resPreset?: Resolution;
 
   // Prompt settings
-  negative_prompt?: string; // Will be converted to negative_prompt
+  negative_prompt?: string;
   qualityToggle?: boolean;
   ucPreset?: 0 | 1 | 2 | 3;
 
   // Image settings
   width?: number;
   height?: number;
-  n_samples?: number; // Will be converted to n_samples
+  n_samples?: number;
 
   // AI settings
   steps?: number;
   scale?: number;
-  dynamic_thresholding?: boolean; // Will be converted to dynamic_thresholding
+  dynamic_thresholding?: boolean;
   seed?: number;
-  extra_noise_seed?: number; // Will be converted to extra_noise_seed
+  extra_noise_seed?: number;
   sampler?: Sampler;
   sm?: boolean;
-  sm_dyn?: boolean; // Will be converted to sm_dyn
-  cfg_rescale?: number; // Will be converted to cfg_rescale
-  noise_schedule?: Noise; // Will be converted to noise_schedule
+  sm_dyn?: boolean;
+  cfg_rescale?: number;
+  noise_schedule?: Noise;
 
   // img2img settings
-  image?: string;
+  /** Source image. Accepts any ImageInput (path, Blob, URL, raw base64, ...) */
+  image?: ImageInput;
   strength?: number;
   img2img?: V4Img2Img;
   noise?: number;
-  controlnet_strength?: number; // Will be converted to controlnet_strength
-  controlnet_condition?: string; // Will be converted to controlnet_condition
-  controlnet_model?: Controlnet; // Will be converted to controlnet_model
+  controlnet_strength?: number;
+  controlnet_condition?: string;
+  controlnet_model?: Controlnet;
 
   // Inpaint settings
-  add_original_image?: boolean; // Will be converted to add_original_image
-  mask?: string;
+  add_original_image?: boolean;
+  /** Inpainting mask (white = repaint). Accepts any ImageInput */
+  mask?: ImageInput;
 
   // Vibe Transfer settings
-  reference_image_multiple?: string[]; // Will be converted to reference_image_multiple
-  reference_information_extracted_multiple?: number[]; // Will be converted to reference_information_extracted_multiple
-  reference_strength_multiple?: number[]; // Will be converted to reference_strength_multiple
+  /** Reference images for vibe transfer. Accept any ImageInput; V4 models encode them into vibe tokens automatically */
+  reference_image_multiple?: ImageInput[];
+  reference_information_extracted_multiple?: number[];
+  reference_strength_multiple?: number[];
+
+  // Director reference (character reference / precise reference, V4.5)
+  /** Reference images. For character reference: 1024x1536, 1536x1024 or 1472x1472 with black padding */
+  director_reference_images?: ImageInput[];
+  /** For character reference: set caption.base_caption to "character" or "character&style" */
+  director_reference_descriptions?: V4ConditionInput[];
+  /** 0-1 per reference image */
+  director_reference_information_extracted?: number[];
+  /** 0-1 per reference image */
+  director_reference_strength_values?: number[];
+  /** Fidelity slider (0-1) per reference image */
+  director_reference_secondary_strength_values?: number[];
 
   // Director reference settings
   director_reference_descriptions?: DirectorReferenceDescription[]; // Will be converted to director_reference_descriptions
@@ -197,27 +210,29 @@ export interface Metadata {
   director_reference_strength_values?: number[]; // Will be converted to director_reference_strength_values
 
   // V4/V4.5 specific settings
-  params_version?: 1 | 2 | 3; // Will be converted to params_version
+  params_version?: 1 | 2 | 3;
   autoSmea?: boolean;
   characterPrompts?: CharacterPrompt[];
-
-  v4_prompt?: V4PromptFormat; // Will be converted to v4_prompt
-  v4_negative_prompt?: V4NegativePromptFormat; // Will be converted to v4_negative_prompt
-  skip_cfg_above_sigma?: number | null; // Will be converted to skip_cfg_above_sigma
-  use_coords?: boolean; // Will be converted to use_coords
-  legacy_uc?: boolean; // Will be converted to legacy_uc
-  normalize_reference_strength_multiple?: boolean; // Will be converted to normalize_reference_strength_multiple
-  deliberate_euler_ancestral_bug?: boolean; // Will be converted to deliberate_euler_ancestral_bug
-  prefer_brownian?: boolean; // Will be converted to prefer_brownian
+  v4_prompt?: V4PromptFormat;
+  v4_negative_prompt?: V4NegativePromptFormat;
+  skip_cfg_above_sigma?: number | null;
+  use_coords?: boolean;
+  legacy_uc?: boolean;
+  normalize_reference_strength_multiple?: boolean;
+  deliberate_euler_ancestral_bug?: boolean;
+  prefer_brownian?: boolean;
 
   // V4.5 specific settings
-  inpaintImg2ImgStrength?: number; // Will be converted to inpaint_img2img_strength, default to 1
+  /** Sent to the API as inpaint_img2img_strength (default 1) */
+  inpaintImg2ImgStrength?: number;
 
   // Misc settings
+  color_correct?: boolean;
+  image_format?: string;
   legacy?: boolean;
-  legacy_v3_extend?: boolean; // Will be converted to legacy_v3_extend
+  legacy_v3_extend?: boolean;
 
-  stream?: string | null; // Whether to stream the response
+  stream?: string | null;
 }
 
 // Image related types
@@ -273,7 +288,14 @@ export type DirectorRequest =
 
 export interface NovelAIOptions {
   token: string;
-  host?: Host;
+  host?: Host | string;
+  /** Host used for text generation endpoints (default: Host.TEXT) */
+  textHost?: Host | string;
+  /**
+   * Request timeout in milliseconds. Covers the time until the API responds
+   * (for image generation that includes the generation itself).
+   * @default 120000
+   */
   timeout?: number;
   retry?: RetryConfig;
   verbose?: boolean;
@@ -287,8 +309,85 @@ export interface NovelAIResponse {
   data: ArrayBuffer | ReadableStream<Uint8Array> | null;
 }
 
-// Error types
-export interface NovelAIError extends Error {
-  status?: number;
-  statusText?: string;
+// Tag suggestion types
+export interface TagSuggestion {
+  tag: string;
+  confidence?: number;
+  count?: number;
+}
+
+// ---- Text generation (OpenAI-compatible endpoints) ----
+
+export type ChatRole = "system" | "user" | "assistant";
+
+export interface ChatMessage {
+  role: ChatRole;
+  content: string;
+}
+
+/**
+ * Options for text generation via the OpenAI-compatible endpoints.
+ * Unknown keys are passed through to the API untouched.
+ */
+export interface TextGenerationOptions {
+  /** Model id (default: TextModel.ERATO) */
+  model?: string;
+  max_tokens?: number;
+  temperature?: number;
+  top_p?: number;
+  top_k?: number;
+  min_p?: number;
+  frequency_penalty?: number;
+  presence_penalty?: number;
+  stop?: string | string[];
+  seed?: number;
+  logit_bias?: Record<string, number>;
+  n?: number;
+  [key: string]: unknown;
+}
+
+export interface ChatCompletionChoice {
+  index: number;
+  message: ChatMessage;
+  finish_reason: string | null;
+}
+
+export interface ChatCompletion {
+  id: string;
+  object: string;
+  created: number;
+  model: string;
+  choices: ChatCompletionChoice[];
+  usage?: {
+    prompt_tokens: number;
+    completion_tokens: number;
+    total_tokens: number;
+  };
+}
+
+export interface ChatCompletionChunkChoice {
+  index: number;
+  delta: Partial<ChatMessage>;
+  finish_reason: string | null;
+}
+
+export interface ChatCompletionChunk {
+  id: string;
+  object: string;
+  created: number;
+  model: string;
+  choices: ChatCompletionChunkChoice[];
+}
+
+export interface Completion {
+  id: string;
+  object: string;
+  created: number;
+  model: string;
+  choices: { index: number; text: string; finish_reason: string | null }[];
+  usage?: {
+    prompt_tokens: number;
+    completion_tokens: number;
+    total_tokens: number;
+  };
 }
