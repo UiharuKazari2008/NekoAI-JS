@@ -6,7 +6,13 @@ import {
   isV4Model,
   Resolution,
 } from "./constants";
-import { Metadata, CharacterCaption } from "./types";
+import {
+  Metadata,
+  CharacterCaption,
+  MAX_DIRECTOR_REFERENCES,
+  isDirectorReferenceBaseCaption,
+  DirectorReferenceDescription,
+} from "./types";
 import { deduplicateTags } from "./utils";
 
 /**
@@ -29,10 +35,13 @@ export class MetadataProcessor {
     this.handleUcPreset(result);
     this.handleQualityTags(result);
 
-    // Deduplicate tags
-    result.prompt = result.prompt ? deduplicateTags(result.prompt) : "";
+    // Deduplicate tags (skipped when deduplicate_tags is explicitly false)
+    const shouldDeduplicate = result.deduplicate_tags !== false;
+    result.prompt = result.prompt
+      ? (shouldDeduplicate ? deduplicateTags(result.prompt) : result.prompt)
+      : "";
     result.negative_prompt = result.negative_prompt
-      ? deduplicateTags(result.negative_prompt)
+      ? (shouldDeduplicate ? deduplicateTags(result.negative_prompt) : result.negative_prompt)
       : "";
 
     // Handle img2img and inpaint specific parameters
@@ -351,10 +360,15 @@ export class MetadataProcessor {
     }
 
     // Set default values for each character prompt
+    const shouldDeduplicate = metadata.deduplicate_tags !== false;
     metadata.characterPrompts.forEach((cp) => {
       cp.enabled = cp.enabled ?? true;
-      cp.prompt = cp.prompt ? deduplicateTags(cp.prompt) : "1girl, cute";
-      cp.uc = cp.uc ? deduplicateTags(cp.uc) : "lowres, aliasing,";
+      cp.prompt = cp.prompt
+        ? (shouldDeduplicate ? deduplicateTags(cp.prompt) : cp.prompt)
+        : "1girl, cute";
+      cp.uc = cp.uc
+        ? (shouldDeduplicate ? deduplicateTags(cp.uc) : cp.uc)
+        : "lowres, aliasing,";
 
       // Ensure center coordinates exist with defaults
       cp.center = cp.center || { x: 0.5, y: 0.5 };
@@ -465,16 +479,16 @@ export class MetadataProcessor {
   }
 
   /**
-   * Apply default values for director reference fields
-   * Ensures arrays have consistent lengths when director_reference_images is provided
-   * Removes all director reference parameters if no images are provided
-   * When director references are used, removes old vibe transfer parameters and bypasses vibe encoding
+   * Apply default values for director reference fields (Precise Reference v2).
+   * Parallel arrays are padded to match director_reference_images length (max 6).
+   * Existing valid base_caption values are preserved; invalid captions normalize to "character&style".
+   * Strength values are clamped to [0, 1]. Vibe transfer fields are stripped when director refs are set.
+   * Img2img (`image` + `action: IMG2IMG`) is allowed alongside director references.
    *
    * @param metadata - Metadata to update
    * @private
    */
   private applyDirectorReferenceDefaults(metadata: Metadata): void {
-    // If no director reference images provided, remove all director reference parameters
     if (!metadata.director_reference_images?.length) {
       delete metadata.director_reference_descriptions;
       delete metadata.director_reference_images;
@@ -484,56 +498,108 @@ export class MetadataProcessor {
       return;
     }
 
-    // Director reference images are provided - remove old vibe transfer parameters and bypass vibe encoding
     delete metadata.reference_image_multiple;
     delete metadata.reference_information_extracted_multiple;
     delete metadata.reference_strength_multiple;
     delete metadata.normalize_reference_strength_multiple;
 
+    if (metadata.director_reference_images.length > MAX_DIRECTOR_REFERENCES) {
+      metadata.director_reference_images =
+        metadata.director_reference_images.slice(0, MAX_DIRECTOR_REFERENCES);
+    }
+
     const imageCount = metadata.director_reference_images.length;
 
-    // Initialize arrays if not provided
-    metadata.director_reference_descriptions = metadata.director_reference_descriptions ?? [];
-    metadata.director_reference_information_extracted = metadata.director_reference_information_extracted ?? [];
-    metadata.director_reference_strength_values = metadata.director_reference_strength_values ?? [];
-    metadata.director_reference_secondary_strength_values = metadata.director_reference_secondary_strength_values ?? [];
+    metadata.director_reference_descriptions =
+      metadata.director_reference_descriptions ?? [];
+    metadata.director_reference_information_extracted =
+      metadata.director_reference_information_extracted ?? [];
+    metadata.director_reference_strength_values =
+      metadata.director_reference_strength_values ?? [];
+    metadata.director_reference_secondary_strength_values =
+      metadata.director_reference_secondary_strength_values ?? [];
 
-    // Ensure all arrays have the same length as director_reference_images
     while (metadata.director_reference_descriptions.length < imageCount) {
-      metadata.director_reference_descriptions.push({
-        caption: {
-          base_caption: "character&style",
-          char_captions: []
-        },
-        legacy_uc: false
-      });
+      metadata.director_reference_descriptions.push(
+        this.defaultDirectorReferenceDescription(),
+      );
+    }
+
+    for (let i = 0; i < imageCount; i++) {
+      metadata.director_reference_descriptions[i] =
+        this.normalizeDirectorReferenceDescription(
+          metadata.director_reference_descriptions[i],
+        );
     }
 
     while (metadata.director_reference_information_extracted.length < imageCount) {
       metadata.director_reference_information_extracted.push(1);
     }
 
-    while (metadata.director_reference_strength_values.length < imageCount) {
-      metadata.director_reference_strength_values.push(1);
+    metadata.director_reference_strength_values =
+      this.padAndClampDirectorStrengths(
+        metadata.director_reference_strength_values,
+        imageCount,
+      );
+    metadata.director_reference_secondary_strength_values =
+      this.padAndClampDirectorStrengths(
+        metadata.director_reference_secondary_strength_values,
+        imageCount,
+      );
+
+    metadata.director_reference_descriptions =
+      metadata.director_reference_descriptions.slice(0, imageCount);
+    metadata.director_reference_information_extracted =
+      metadata.director_reference_information_extracted.slice(0, imageCount);
+  }
+
+  private defaultDirectorReferenceDescription(): DirectorReferenceDescription {
+    return {
+      caption: {
+        base_caption: "character&style",
+        char_captions: [],
+      },
+      legacy_uc: false,
+    };
+  }
+
+  private normalizeDirectorReferenceDescription(
+    desc: DirectorReferenceDescription | undefined,
+  ): DirectorReferenceDescription {
+    if (!desc) {
+      return this.defaultDirectorReferenceDescription();
     }
 
-    while (metadata.director_reference_secondary_strength_values.length < imageCount) {
-      metadata.director_reference_secondary_strength_values.push(1);
+    if (!desc.caption) {
+      desc.caption = {
+        base_caption: "character&style",
+        char_captions: [],
+      };
+    } else {
+      if (!isDirectorReferenceBaseCaption(desc.caption.base_caption)) {
+        desc.caption.base_caption = "character&style";
+      }
+      desc.caption.char_captions = desc.caption.char_captions ?? [];
     }
 
-    // Trim arrays if they're longer than the image count
-    if (metadata.director_reference_descriptions.length > imageCount) {
-      metadata.director_reference_descriptions = metadata.director_reference_descriptions.slice(0, imageCount);
+    desc.legacy_uc = desc.legacy_uc ?? false;
+    return desc;
+  }
+
+  private padAndClampDirectorStrengths(
+    values: number[],
+    imageCount: number,
+  ): number[] {
+    const result = values.slice(0, imageCount);
+    for (let i = 0; i < result.length; i++) {
+      if (result[i] !== undefined) {
+        result[i] = Math.min(1, Math.max(0, result[i]));
+      }
     }
-    if (metadata.director_reference_information_extracted.length > imageCount) {
-      metadata.director_reference_information_extracted = metadata.director_reference_information_extracted.slice(0, imageCount);
+    while (result.length < imageCount) {
+      result.push(1);
     }
-    if (metadata.director_reference_strength_values.length > imageCount) {
-      metadata.director_reference_strength_values = metadata.director_reference_strength_values.slice(0, imageCount);
-    }
-    if (metadata.director_reference_secondary_strength_values.length > imageCount) {
-      metadata.director_reference_secondary_strength_values = metadata.director_reference_secondary_strength_values.slice(0, imageCount);
-    }
+    return result;
   }
 
   /**

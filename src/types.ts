@@ -135,10 +135,44 @@ export interface V4Img2Img {
 }
 
 /**
- * Director reference description format
+ * Precise Reference v2: per-slot base caption mode for director references.
+ * @see director_reference_descriptions — parallel to director_reference_images
+ */
+export type DirectorReferenceBaseCaption =
+  | "character&style"
+  | "character"
+  | "style";
+
+/** Maximum director reference images per request (Precise Reference v2). */
+export const MAX_DIRECTOR_REFERENCES = 6;
+
+const VALID_DIRECTOR_REFERENCE_BASE_CAPTIONS: DirectorReferenceBaseCaption[] = [
+  "character&style",
+  "character",
+  "style",
+];
+
+export function isDirectorReferenceBaseCaption(
+  value: unknown,
+): value is DirectorReferenceBaseCaption {
+  return VALID_DIRECTOR_REFERENCE_BASE_CAPTIONS.includes(
+    value as DirectorReferenceBaseCaption,
+  );
+}
+
+/**
+ * Caption block for a single director reference slot.
+ */
+export interface DirectorReferenceCaptionFormat {
+  base_caption: DirectorReferenceBaseCaption;
+  char_captions: CharacterCaption[];
+}
+
+/**
+ * Director reference description format (one entry per reference image).
  */
 export interface DirectorReferenceDescription {
-  caption: V4CaptionFormat;
+  caption: DirectorReferenceCaptionFormat;
   legacy_uc: boolean;
 }
 
@@ -154,6 +188,7 @@ export interface Metadata {
   negative_prompt?: string; // Will be converted to negative_prompt
   qualityToggle?: boolean;
   ucPreset?: 0 | 1 | 2 | 3;
+  deduplicate_tags?: boolean; // When false, skip comma-separated tag deduplication (stripped before API request)
 
   // Image settings
   width?: number;
@@ -190,12 +225,19 @@ export interface Metadata {
   reference_information_extracted_multiple?: number[]; // Will be converted to reference_information_extracted_multiple
   reference_strength_multiple?: number[]; // Will be converted to reference_strength_multiple
 
-  // Director reference settings
-  director_reference_descriptions?: DirectorReferenceDescription[]; // Will be converted to director_reference_descriptions
-  director_reference_images?: string[]; // Will be converted to director_reference_images
-  director_reference_information_extracted?: number[]; // Will be converted to director_reference_information_extracted
-  director_reference_strength_values?: number[]; // Will be converted to director_reference_strength_values
-  director_reference_secondary_strength_values?: number[]; // Will be converted to director_reference_secondary_strength_values
+  /**
+   * Precise Reference v2 — parallel arrays (same length, max {@link MAX_DIRECTOR_REFERENCES}).
+   * Index `i` applies to `director_reference_images[i]`.
+   */
+  director_reference_images?: string[];
+  /** Per-slot captions; `caption.base_caption` is {@link DirectorReferenceBaseCaption}. */
+  director_reference_descriptions?: DirectorReferenceDescription[];
+  /** Per-slot information-extracted flags (usually `1`). */
+  director_reference_information_extracted?: number[];
+  /** Per-slot primary strength in `[0, 1]`. */
+  director_reference_strength_values?: number[];
+  /** Per-slot secondary strength in `[0, 1]`. */
+  director_reference_secondary_strength_values?: number[];
 
   // V4/V4.5 specific settings
   params_version?: 1 | 2 | 3; // Will be converted to params_version
@@ -291,5 +333,9 @@ export interface NovelAIResponse {
 // Error types
 export interface NovelAIError extends Error {
   status?: number;
+  statusCode?: number;
   statusText?: string;
+  /** NovelAI body `error` field when present (distinct from HTTP status). */
+  code?: string | number;
+  body?: unknown;
 }

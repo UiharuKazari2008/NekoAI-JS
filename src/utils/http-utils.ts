@@ -1,6 +1,58 @@
 import { decode } from "@msgpack/msgpack";
-import { NovelAIResponse } from "../types";
+import { NovelAIError, NovelAIResponse } from "../types";
 import { Image, MsgpackEvent, EventType } from "../image";
+
+/**
+ * Read NovelAI error JSON (or text) from a failed Response and throw with
+ * exact message + statusCode attached.
+ */
+export async function throwResponseError(response: Response): Promise<never> {
+  let bodyText = "";
+  let bodyJson: Record<string, unknown> | null = null;
+  try {
+    bodyText = await response.text();
+    if (bodyText) {
+      try {
+        const parsed = JSON.parse(bodyText);
+        if (parsed && typeof parsed === "object") {
+          bodyJson = parsed as Record<string, unknown>;
+        }
+      } catch {
+        /* non-JSON body */
+      }
+    }
+  } catch {
+    /* ignore body read failures */
+  }
+
+  const apiMessage =
+    (typeof bodyJson?.message === "string" && bodyJson.message) ||
+    (typeof bodyJson?.error === "string" && bodyJson.error) ||
+    (bodyText && bodyText.trim()) ||
+    response.statusText ||
+    "Unknown error";
+
+  const apiStatusCode =
+    (typeof bodyJson?.statusCode === "number" && bodyJson.statusCode) ||
+    (typeof bodyJson?.status === "number" && bodyJson.status) ||
+    response.status;
+
+  const error = new Error(String(apiMessage)) as NovelAIError;
+  error.status = response.status;
+  error.statusCode = Number(apiStatusCode);
+  error.statusText = response.statusText;
+  if (bodyJson?.error != null && typeof bodyJson.error !== "object") {
+    error.code = bodyJson.error as string | number;
+  } else if (bodyJson?.code != null && typeof bodyJson.code !== "object") {
+    error.code = bodyJson.code as string | number;
+  }
+  if (bodyJson) {
+    error.body = bodyJson;
+  } else if (bodyText) {
+    error.body = bodyText;
+  }
+  throw error;
+}
 
 /**
  * Real-time msgpack parser that processes streaming data chunk by chunk.
@@ -459,12 +511,7 @@ export async function handleResponse(
   });
 
   if (!response.ok) {
-    const error = new Error(
-      `HTTP Error: ${response.status} ${response.statusText}`,
-    );
-    (error as any).status = response.status;
-    (error as any).statusText = response.statusText;
-    throw error;
+    await throwResponseError(response);
   }
 
   // For binary responses, we need to clone the response and buffer all the data

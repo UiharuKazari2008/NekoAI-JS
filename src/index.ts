@@ -23,6 +23,9 @@ export {
 export type {
   CharacterCaption,
   CharacterPrompt,
+  DirectorReferenceBaseCaption,
+  DirectorReferenceCaptionFormat,
+  DirectorReferenceDescription,
   DirectorRequest,
   ImageOptions,
   Metadata,
@@ -35,6 +38,11 @@ export type {
   V4CaptionFormat,
   V4NegativePromptFormat,
   V4PromptFormat,
+} from "./types";
+
+export {
+  MAX_DIRECTOR_REFERENCES,
+  isDirectorReferenceBaseCaption,
 } from "./types";
 
 // Export utilities

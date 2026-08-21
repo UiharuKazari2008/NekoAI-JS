@@ -27,6 +27,7 @@ export {
   generateXInitiatedAt,
   prepHeaders,
   handleResponse,
+  throwResponseError,
   StreamingMsgpackParser,
   StreamingSSEParser,
   parseStreamEvents,

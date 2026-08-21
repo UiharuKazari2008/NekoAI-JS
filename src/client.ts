@@ -6,6 +6,7 @@ import {
   DirectorTools,
   EmotionOptions,
   EmotionLevel,
+  Action,
   isV4Model,
 } from "./constants";
 import { Image, MsgpackEvent, EventType } from "./image";
@@ -28,6 +29,7 @@ import {
   StreamingMsgpackParser,
   StreamingSSEParser,
   parseStreamEvents,
+  throwResponseError,
 } from "./utils";
 import { metadataProcessor } from "./metadata";
 
@@ -110,12 +112,23 @@ export class NovelAI {
         processedMetadata.model && isV4Model(processedMetadata.model);
 
       if (isV4 && !forceZip) {
-        // V4 models use streaming msgpack endpoint
+        // Plain img2img: NovelAI does not emit step-stream events; the stream endpoint
+        // typically returns a ZIP. Always use the batch ZIP /ai/generate-image path.
+        // Inpaint (infill) and text generate keep the real stream.
+        if (processedMetadata.action === Action.IMG2IMG) {
+          if (stream) {
+            console.log(
+              "[Streaming] Plain img2img has no step stream — using batch ZIP endpoint",
+            );
+          }
+          return this.processV3Response(payload);
+        }
+        // V4 generate / infill: streaming msgpack (or SSE for infill) endpoint
         return stream
           ? this.streamV4Events(payload)
           : this.processV4Response(payload);
       } else {
-        // V3 models use regular ZIP endpoint
+        // V3 models (or forceZip) use regular ZIP endpoint
         return this.processV3Response(payload);
       }
     }, this.retryConfig);
@@ -623,9 +636,8 @@ export class NovelAI {
       });
 
       if (!response.ok) {
-        throw new Error(
-          `HTTP Error: ${response.status} ${response.statusText}`,
-        );
+        // throwResponseError: src/utils/http-utils.ts — attaches statusCode + body message
+        await throwResponseError(response);
       }
 
       if (!response.body) {
