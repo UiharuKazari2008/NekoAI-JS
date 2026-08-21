@@ -50,11 +50,18 @@ export enum Model {
   // NAI V4.5 Curated
   V4_5_CUR = "nai-diffusion-4-5-curated",
   V4_5_CUR_INP = "nai-diffusion-4-5-curated-inpainting",
+  // NAI V5 Full
+  V5 = "nai-diffusion-5-full",
+  V5_INP = "nai-diffusion-5-full-inpainting",
+  // NAI V5 Curated
+  V5_CUR = "nai-diffusion-5-curated",
+  V5_CUR_INP = "nai-diffusion-5-curated-inpainting",
   // Furry model beta v1.3
   FURRY = "nai-diffusion-furry-3",
   FURRY_INP = "nai-diffusion-furry-3-inpainting",
 }
 
+/** V4 / V4.5 models (vibe transfer eligible; v4_prompt envelope). */
 export function isV4Model(model: Model): boolean {
   return (
     model === Model.V4 ||
@@ -66,6 +73,24 @@ export function isV4Model(model: Model): boolean {
     model === Model.V4_5_CUR ||
     model === Model.V4_5_CUR_INP
   );
+}
+
+/** NovelAI Diffusion V5 Full / Curated (and inpaint variants). */
+export function isV5Family(model: Model): boolean {
+  return (
+    model === Model.V5 ||
+    model === Model.V5_INP ||
+    model === Model.V5_CUR ||
+    model === Model.V5_CUR_INP
+  );
+}
+
+/**
+ * Models that use the v4_prompt / msgpack stream generate path
+ * (V4, V4.5, and V5).
+ */
+export function usesV4PromptEnvelope(model: Model): boolean {
+  return isV4Model(model) || isV5Family(model);
 }
 
 export enum Controlnet {

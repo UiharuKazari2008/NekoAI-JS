@@ -17,6 +17,9 @@ export {
   Resolution,
   RESOLUTION_DIMENSIONS,
   Sampler,
+  isV4Model,
+  isV5Family,
+  usesV4PromptEnvelope,
 } from "./constants";
 
 // Export types

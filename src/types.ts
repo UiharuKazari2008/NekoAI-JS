@@ -239,8 +239,8 @@ export interface Metadata {
   /** Per-slot secondary strength in `[0, 1]`. */
   director_reference_secondary_strength_values?: number[];
 
-  // V4/V4.5 specific settings
-  params_version?: 1 | 2 | 3; // Will be converted to params_version
+  // V4/V4.5/V5 specific settings
+  params_version?: 1 | 2 | 3 | 4; // V5 live capture uses 4; older defaults stay 3
   autoSmea?: boolean;
   characterPrompts?: CharacterPrompt[];
 
@@ -255,6 +255,22 @@ export interface Metadata {
 
   // V4.5 specific settings
   inpaintImg2ImgStrength?: number; // Will be converted to inpaint_img2img_strength, default to 1
+
+  // V5 optional request fields (pass-through; omit when undefined)
+  /** Max Enhance: keep source WxH and set true instead of numeric scale-up. */
+  upscaled_enhance?: boolean;
+  /** Straight alpha channel for transparent V5 outputs. */
+  straight_alpha?: boolean | null;
+  /** String quality preset id when the client sends preset hints (e.g. "standard"). */
+  qualityPresetId?: string;
+  /** String UC preset id when the client sends preset hints (e.g. "heavy"). */
+  ucPresetId?: string;
+  /** Numeric encoding of qualityPresetId (0=none …). */
+  tag_hint_qt?: number;
+  /** Numeric encoding of ucPresetId. */
+  tag_hint_uc_preset?: number;
+  /** True when transparent-background mode is requested on V5. */
+  tag_hint_transparent_background?: boolean;
 
   // Misc settings
   legacy?: boolean;

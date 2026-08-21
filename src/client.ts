@@ -8,6 +8,7 @@ import {
   EmotionLevel,
   Action,
   isV4Model,
+  usesV4PromptEnvelope,
 } from "./constants";
 import { Image, MsgpackEvent, EventType } from "./image";
 import {
@@ -108,10 +109,11 @@ export class NovelAI {
     const payload = prepareMetadataForApi(processedMetadata);
 
     return withRetry(async () => {
-      const isV4 =
-        processedMetadata.model && isV4Model(processedMetadata.model);
+      const useStreamPath =
+        processedMetadata.model &&
+        usesV4PromptEnvelope(processedMetadata.model);
 
-      if (isV4 && !forceZip) {
+      if (useStreamPath && !forceZip) {
         // Plain img2img: NovelAI does not emit step-stream events; the stream endpoint
         // typically returns a ZIP. Always use the batch ZIP /ai/generate-image path.
         // Inpaint (infill) and text generate keep the real stream.
@@ -123,7 +125,7 @@ export class NovelAI {
           }
           return this.processV3Response(payload);
         }
-        // V4 generate / infill: streaming msgpack (or SSE for infill) endpoint
+        // V4 / V4.5 / V5 generate / infill: streaming msgpack (or SSE for infill) endpoint
         return stream
           ? this.streamV4Events(payload)
           : this.processV4Response(payload);

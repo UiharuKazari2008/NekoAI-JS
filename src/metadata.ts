@@ -3,7 +3,8 @@ import {
   Model,
   Sampler,
   Noise,
-  isV4Model,
+  isV5Family,
+  usesV4PromptEnvelope,
   Resolution,
 } from "./constants";
 import {
@@ -89,7 +90,10 @@ export class MetadataProcessor {
     metadata.controlnet_strength = metadata.controlnet_strength ?? 1;
     metadata.add_original_image = metadata.add_original_image ?? true;
     metadata.autoSmea = metadata.autoSmea ?? false;
-    metadata.params_version = metadata.params_version ?? 3;
+    // V5 live capture uses params_version 4; older families keep 3 unless the caller sets it.
+    if (metadata.params_version == null) {
+      metadata.params_version = isV5Family(metadata.model) ? 4 : 3;
+    }
     metadata.prompt = metadata.prompt ?? "1girl, cute";
     metadata.negative_prompt = metadata.negative_prompt ?? "";
     metadata.characterPrompts = metadata.characterPrompts ?? [];
@@ -114,8 +118,11 @@ export class MetadataProcessor {
    * @private
    */
   private handleStream(metadata: Metadata): void {
-    // Ensure stream is always false for non-streaming actions
-    if (isV4Model(metadata.model) && metadata.action == Action.GENERATE) {
+    // V4 / V4.5 / V5 generate uses msgpack stream endpoint
+    if (
+      usesV4PromptEnvelope(metadata.model) &&
+      metadata.action == Action.GENERATE
+    ) {
       metadata.stream = "msgpack";
     }
   }
@@ -147,19 +154,8 @@ export class MetadataProcessor {
    * @private
    */
   private handleModelSpecificSettings(metadata: Metadata): void {
-    const v4Models = [
-      Model.V4,
-      Model.V4_INP,
-      Model.V4_CUR,
-      Model.V4_CUR_INP,
-      Model.V4_5_CUR,
-      Model.V4_5_CUR_INP,
-      Model.V4_5,
-      Model.V4_5_INP,
-    ];
-
-    // Drop sm and sm_dyn for V4+ models
-    if (metadata.model && v4Models.includes(metadata.model)) {
+    // Drop sm and sm_dyn for V4+ / V5 models (v4_prompt envelope family)
+    if (metadata.model && usesV4PromptEnvelope(metadata.model)) {
       metadata.sm = undefined;
       metadata.sm_dyn = undefined;
     }
@@ -192,11 +188,19 @@ export class MetadataProcessor {
 
     let qualityTags = "";
 
-    if (metadata.model === Model.V4_5 || metadata.model === Model.V4_5_INP) {
+    if (
+      metadata.model === Model.V4_5 ||
+      metadata.model === Model.V4_5_INP ||
+      metadata.model === Model.V5 ||
+      metadata.model === Model.V5_INP
+    ) {
+      // V5 Full quality tags match V4.5 Full in the launch capture
       qualityTags = ", very aesthetic, masterpiece, no text";
     } else if (
       metadata.model === Model.V4_5_CUR ||
-      metadata.model === Model.V4_5_CUR_INP
+      metadata.model === Model.V4_5_CUR_INP ||
+      metadata.model === Model.V5_CUR ||
+      metadata.model === Model.V5_CUR_INP
     ) {
       qualityTags =
         ", location, masterpiece, no text, -0.8::feet::, rating:general";
@@ -231,7 +235,12 @@ export class MetadataProcessor {
   handleUcPreset(metadata: Metadata): void {
     let uc = "";
 
-    if (metadata.model === Model.V4_5 || metadata.model === Model.V4_5_INP) {
+    if (
+      metadata.model === Model.V4_5 ||
+      metadata.model === Model.V4_5_INP ||
+      metadata.model === Model.V5 ||
+      metadata.model === Model.V5_INP
+    ) {
       if (metadata.ucPreset === 0) {
         uc =
           ", nsfw, lowres, artistic error, film grain, scan artifacts, worst quality, bad quality, jpeg artifacts, very displeasing, chromatic aberration, dithering, halftone, screentone, multiple views, logo, too many watermarks, negative space, blank page";
@@ -247,7 +256,9 @@ export class MetadataProcessor {
       }
     } else if (
       metadata.model === Model.V4_5_CUR ||
-      metadata.model === Model.V4_5_CUR_INP
+      metadata.model === Model.V4_5_CUR_INP ||
+      metadata.model === Model.V5_CUR ||
+      metadata.model === Model.V5_CUR_INP
     ) {
       if (metadata.ucPreset === 0) {
         uc =
@@ -389,19 +400,8 @@ export class MetadataProcessor {
       return;
     }
 
-    // Skip if model is not V4/V4.5
-    const v4Models = [
-      Model.V4,
-      Model.V4_INP,
-      Model.V4_CUR,
-      Model.V4_CUR_INP,
-      Model.V4_5_CUR,
-      Model.V4_5_CUR_INP,
-      Model.V4_5,
-      Model.V4_5_INP,
-    ];
-
-    if (!metadata.model || !v4Models.includes(metadata.model)) {
+    // Skip if model is not V4 / V4.5 / V5 (v4_prompt envelope)
+    if (!metadata.model || !usesV4PromptEnvelope(metadata.model)) {
       return;
     }
 
@@ -440,19 +440,8 @@ export class MetadataProcessor {
       return;
     }
 
-    // Skip if model is not V4/V4.5
-    const v4Models = [
-      Model.V4,
-      Model.V4_INP,
-      Model.V4_CUR,
-      Model.V4_CUR_INP,
-      Model.V4_5_CUR,
-      Model.V4_5_CUR_INP,
-      Model.V4_5,
-      Model.V4_5_INP,
-    ];
-
-    if (!metadata.model || !v4Models.includes(metadata.model)) {
+    // Skip if model is not V4 / V4.5 / V5 (v4_prompt envelope)
+    if (!metadata.model || !usesV4PromptEnvelope(metadata.model)) {
       return;
     }
 
