@@ -43,6 +43,8 @@ export function prepareMetadataForApi(metadata: Metadata): any {
   delete params.resPreset;
   // Already folded into v4_prompt / v4_negative_prompt
   delete params.characterPrompts;
+  // Client-side control flag; never send to the API
+  delete params.deduplicate_tags;
 
   // Client-side name -> API name
   if (params.inpaintImg2ImgStrength !== undefined) {

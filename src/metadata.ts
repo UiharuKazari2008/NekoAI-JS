@@ -107,9 +107,17 @@ export class MetadataProcessor {
     this.handleUcPreset(result);
     this.handleQualityTags(result);
 
-    result.prompt = result.prompt ? deduplicateTags(result.prompt) : "";
+    // Deduplicate tags (skipped when deduplicate_tags is explicitly false)
+    const shouldDeduplicate = result.deduplicate_tags !== false;
+    result.prompt = result.prompt
+      ? shouldDeduplicate
+        ? deduplicateTags(result.prompt)
+        : result.prompt
+      : "";
     result.negative_prompt = result.negative_prompt
-      ? deduplicateTags(result.negative_prompt)
+      ? shouldDeduplicate
+        ? deduplicateTags(result.negative_prompt)
+        : result.negative_prompt
       : "";
 
     this.handleActionSpecificParameters(result);
@@ -346,10 +354,19 @@ export class MetadataProcessor {
    * Set default values for character prompts and deduplicate tags
    */
   handleCharacterPrompts(metadata: Metadata): void {
+    const shouldDeduplicate = metadata.deduplicate_tags !== false;
     metadata.characterPrompts?.forEach((cp) => {
       cp.enabled = cp.enabled ?? true;
-      cp.prompt = cp.prompt ? deduplicateTags(cp.prompt) : "1girl, cute";
-      cp.uc = cp.uc ? deduplicateTags(cp.uc) : "lowres, aliasing";
+      cp.prompt = cp.prompt
+        ? shouldDeduplicate
+          ? deduplicateTags(cp.prompt)
+          : cp.prompt
+        : "1girl, cute";
+      cp.uc = cp.uc
+        ? shouldDeduplicate
+          ? deduplicateTags(cp.uc)
+          : cp.uc
+        : "lowres, aliasing";
       cp.center = {
         x: cp.center?.x ?? 0.5,
         y: cp.center?.y ?? 0.5,

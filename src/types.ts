@@ -167,6 +167,11 @@ export interface Metadata {
   negative_prompt?: string;
   qualityToggle?: boolean;
   ucPreset?: 0 | 1 | 2 | 3;
+  /**
+   * Client-side control: when false, skip comma-separated tag deduplication.
+   * Stripped before the API request.
+   */
+  deduplicate_tags?: boolean;
 
   // Image settings
   width?: number;
