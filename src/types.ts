@@ -15,6 +15,19 @@ export interface User {
   token: string;
 }
 
+export interface OpusUsage {
+  percent: number;
+  isNegative: boolean;
+  timeUntilNextPercent: number;
+}
+
+export interface NovelAISubscription {
+  tier: number;
+  active: boolean;
+  usage?: OpusUsage;
+  [key: string]: unknown;
+}
+
 /**
  * Configuration for API request retries
  */

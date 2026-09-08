@@ -17,6 +17,7 @@ import {
   Metadata,
   NovelAIOptions,
   NovelAIResponse,
+  NovelAISubscription,
   RetryConfig,
 } from "./types";
 import {
@@ -326,6 +327,29 @@ export class NovelAI {
       );
     }
     return error;
+  }
+
+  /**
+   * Fetch the current account subscription, including Opus image usage when supplied.
+   */
+  async getSubscription(): Promise<NovelAISubscription> {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), this.timeout);
+    try {
+      const response = await fetch(`${this.host}${Endpoint.SUBSCRIPTION}`, {
+        method: "GET",
+        headers: prepHeaders(this.headers),
+        signal: controller.signal,
+      });
+      if (!response.ok) {
+        await throwResponseError(response);
+      }
+      return (await response.json()) as NovelAISubscription;
+    } catch (error) {
+      throw this.handleRequestError(error);
+    } finally {
+      clearTimeout(timeoutId);
+    }
   }
 
   /**

@@ -48,9 +48,9 @@ export class MetadataProcessor {
     // Handle img2img and inpaint specific parameters
     this.handleActionSpecificParameters(result);
 
-    // Handle character-related parameters
-    this.handleUseCoords(result);
+    // Handle character-related parameters (defaults before use_coords derivation)
     this.handleCharacterPrompts(result);
+    this.handleUseCoords(result);
     this.handleStream(result);
 
     this.handleV4Prompt(result);
@@ -342,7 +342,9 @@ export class MetadataProcessor {
   }
 
   /**
-   * Determine if coordinates should be used based on character prompt positions
+   * Determine if coordinates should be used based on character prompt positions.
+   * Must run after handleCharacterPrompts so missing centers are already 0.5.
+   * Nullish centers still count as auto-position (use_coords false).
    *
    * @param metadata - Metadata to update
    * @private
@@ -353,10 +355,11 @@ export class MetadataProcessor {
       return;
     }
 
-    // Set useCoords to true if any character prompt has non-default center coordinates
-    metadata.use_coords = metadata.characterPrompts.some(
-      (cp) => cp.center?.x !== 0.5 || cp.center?.y !== 0.5,
-    );
+    metadata.use_coords = metadata.characterPrompts.some((cp) => {
+      const x = cp.center?.x ?? 0.5;
+      const y = cp.center?.y ?? 0.5;
+      return x !== 0.5 || y !== 0.5;
+    });
   }
 
   /**

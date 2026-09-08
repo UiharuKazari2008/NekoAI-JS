@@ -28,6 +28,7 @@ export enum Host {
 export enum Endpoint {
   LOGIN = "/user/login",
   USERDATA = "/user/data",
+  SUBSCRIPTION = "/user/subscription",
   IMAGE = "/ai/generate-image",
   IMAGE_STREAM = "/ai/generate-image-stream",
   DIRECTOR = "/ai/augment-image",

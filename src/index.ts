@@ -35,6 +35,8 @@ export type {
   NovelAIError,
   NovelAIOptions,
   NovelAIResponse,
+  NovelAISubscription,
+  OpusUsage,
   PositionCoords,
   RetryConfig,
   User,

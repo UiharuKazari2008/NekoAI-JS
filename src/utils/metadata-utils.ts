@@ -19,7 +19,7 @@ export function prepareMetadataForApi(metadata: Metadata): any {
   delete params.action;
   delete params.prompt;
   delete params.resPreset;
-  // StaticForge-only control flag; never send to the API
+  // Client-side control flag; never send to the API
   delete params.deduplicate_tags;
 
   // Create the payload
