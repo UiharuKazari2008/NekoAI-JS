@@ -28,6 +28,8 @@ describe("deduplicate_tags control flag", () => {
       model: Model.V4_5,
       action: Action.GENERATE,
       deduplicate_tags: false,
+      // Skip UC preset prepend so we can assert the raw negative string
+      ucPreset: 99 as Metadata["ucPreset"],
       characterPrompts: [{ prompt: "char, char", uc: "lowres, lowres" }],
       qualityToggle: false,
     } as Metadata);
