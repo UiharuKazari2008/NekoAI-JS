@@ -6,7 +6,7 @@ export default defineConfig({
   dts: true,
   splitting: false,
   clean: true,
-  external: ["fs", "path", "canvas"], // Mark Node.js built-ins as external
+  external: ["fs", "path", "canvas", "node:fs", "node:path"], // Mark Node.js built-ins as external
   noExternal: [
     "jszip",
     "pako",

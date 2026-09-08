@@ -1,36 +1,61 @@
 import { Metadata } from "../types";
-import { Action, Model } from "../constants";
+import { Action, usesV4PromptEnvelope } from "../constants";
+
+/** Maximum total pixel count accepted by the generation API */
+export const MAX_PIXELS = 3047424;
+
+/**
+ * Scale image dimensions by a factor, clamped to the API's pixel budget and
+ * floored to multiples of 64 (the generation API's dimension granularity).
+ *
+ * @param width - Source width
+ * @param height - Source height
+ * @param factor - Desired scale factor
+ * @param maxPixels - Maximum total pixel count (default: MAX_PIXELS)
+ * @returns Scaled [width, height] tuple
+ */
+export function scaleDimensions(
+  width: number,
+  height: number,
+  factor: number,
+  maxPixels: number = MAX_PIXELS,
+): [number, number] {
+  const clamped = Math.min(factor, Math.sqrt(maxPixels / (width * height)));
+  return [
+    Math.max(64, Math.floor((width * clamped) / 64) * 64),
+    Math.max(64, Math.floor((height * clamped) / 64) * 64),
+  ];
+}
 
 /**
  * Prepares metadata for API request
- * @param metadata - Metadata object with parameters
+ * @param metadata - Processed metadata object
  * @returns Formatted API request payload
  */
 export function prepareMetadataForApi(metadata: Metadata): any {
-  // Create a copy of metadata and remove undefined values (keep null)
-  const params = JSON.parse(
-    JSON.stringify(metadata, (key, value) => {
-      return value === undefined ? undefined : value;
-    }),
-  );
+  // JSON round-trip drops undefined values (null is kept)
+  const params = JSON.parse(JSON.stringify(metadata));
 
-  // Remove model, action, and prompt from parameters since they go in the top level
+  // These go in the top level of the payload, not in parameters
   delete params.model;
   delete params.action;
   delete params.prompt;
   delete params.resPreset;
-  // Client-side control flag; never send to the API
-  delete params.deduplicate_tags;
+  // Already folded into v4_prompt / v4_negative_prompt
+  delete params.characterPrompts;
 
-  // Create the payload
-  const payload: any = {
+  // Client-side name -> API name
+  if (params.inpaintImg2ImgStrength !== undefined) {
+    params.inpaint_img2img_strength = params.inpaintImg2ImgStrength;
+    delete params.inpaintImg2ImgStrength;
+  }
+
+  return {
     input: metadata.prompt,
     model: metadata.model,
     action: metadata.action,
     parameters: params,
   };
-
-  return payload;
 }
 
 /**
@@ -49,24 +74,16 @@ export function calculateCost(metadata: Metadata, isOpus = false): number {
       ? metadata.strength
       : 1.0;
 
-  // Handle SMEA factor for both V3 and V4+ models
+  // SMEA factor: V4+ / V5 models use autoSmea, V3 uses sm/sm_dyn
   let smeaFactor = 1.0;
-  if (
-    metadata.model === Model.V4 ||
-    metadata.model === Model.V4_CUR ||
-    metadata.model === Model.V4_5_CUR
-  ) {
-    // V4/V4.5 uses autoSmea
+  if (metadata.model && usesV4PromptEnvelope(metadata.model)) {
     if (metadata.autoSmea) {
       smeaFactor = 1.2;
     }
-  } else {
-    // V3 uses sm/sm_dyn
-    if (metadata.sm_dyn) {
-      smeaFactor = 1.4;
-    } else if (metadata.sm) {
-      smeaFactor = 1.2;
-    }
+  } else if (metadata.sm_dyn) {
+    smeaFactor = 1.4;
+  } else if (metadata.sm) {
+    smeaFactor = 1.2;
   }
 
   const resolution = Math.max(width * height, 65536);

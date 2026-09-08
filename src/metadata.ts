@@ -6,15 +6,83 @@ import {
   isV5Family,
   usesV4PromptEnvelope,
   Resolution,
+  RESOLUTION_DIMENSIONS,
 } from "./constants";
-import {
-  Metadata,
-  CharacterCaption,
-  MAX_DIRECTOR_REFERENCES,
-  isDirectorReferenceBaseCaption,
-  DirectorReferenceDescription,
-} from "./types";
+import { Metadata, CharacterCaption } from "./types";
 import { deduplicateTags } from "./utils";
+
+/**
+ * Inpainting variants share prompt presets with their base model
+ */
+const BASE_MODEL: Partial<Record<Model, Model>> = {
+  [Model.V3_INP]: Model.V3,
+  [Model.V4_INP]: Model.V4,
+  [Model.V4_CUR_INP]: Model.V4_CUR,
+  [Model.V4_5_INP]: Model.V4_5,
+  [Model.V4_5_CUR_INP]: Model.V4_5_CUR,
+  [Model.V5_INP]: Model.V5,
+  [Model.V5_CUR_INP]: Model.V5_CUR,
+  [Model.FURRY_INP]: Model.FURRY,
+};
+
+function baseModel(model: Model): Model {
+  return BASE_MODEL[model] ?? model;
+}
+
+/**
+ * Quality tags appended to the prompt when qualityToggle is enabled
+ */
+const QUALITY_TAGS: Partial<Record<Model, string>> = {
+  [Model.V4_5]: "very aesthetic, masterpiece, no text",
+  [Model.V4_5_CUR]:
+    "location, masterpiece, no text, -0.8::feet::, rating:general",
+  // V5 Full/Curated quality tags match V4.5 in the launch capture
+  [Model.V5]: "very aesthetic, masterpiece, no text",
+  [Model.V5_CUR]:
+    "location, masterpiece, no text, -0.8::feet::, rating:general",
+  [Model.V4]: "no text, best quality, very aesthetic, absurdres",
+  [Model.V4_CUR]: "rating:general, amazing quality, very aesthetic, absurdres",
+  [Model.V3]: "best quality, amazing quality, very aesthetic, absurdres",
+  [Model.FURRY]: "{best quality}, {amazing quality}",
+};
+
+/**
+ * Negative prompt presets per model, indexed by ucPreset value
+ */
+const UC_PRESETS: Partial<Record<Model, string[]>> = {
+  [Model.V4_5]: [
+    "nsfw, lowres, artistic error, film grain, scan artifacts, worst quality, bad quality, jpeg artifacts, very displeasing, chromatic aberration, dithering, halftone, screentone, multiple views, logo, too many watermarks, negative space, blank page",
+    "nsfw, lowres, artistic error, scan artifacts, worst quality, bad quality, jpeg artifacts, multiple views, very displeasing, too many watermarks, negative space, blank page",
+    "nsfw, {worst quality}, distracting watermark, unfinished, bad quality, {widescreen}, upscale, {sequence}, {{grandfathered content}}, blurred foreground, chromatic aberration, sketch, everyone, [sketch background], simple, [flat colors], ych (character), outline, multiple scenes, [[horror (theme)]], comic",
+    "nsfw, lowres, artistic error, film grain, scan artifacts, worst quality, bad quality, jpeg artifacts, very displeasing, chromatic aberration, dithering, halftone, screentone, multiple views, logo, too many watermarks, negative space, blank page, @_@, mismatched pupils, glowing eyes, bad anatomy",
+  ],
+  [Model.V4_5_CUR]: [
+    "blurry, lowres, upscaled, artistic error, film grain, scan artifacts, worst quality, bad quality, jpeg artifacts, very displeasing, chromatic aberration, halftone, multiple views, logo, too many watermarks, negative space, blank page",
+    "blurry, lowres, upscaled, artistic error, scan artifacts, jpeg artifacts, logo, too many watermarks, negative space, blank page",
+    "blurry, lowres, upscaled, artistic error, film grain, scan artifacts, bad anatomy, bad hands, worst quality, bad quality, jpeg artifacts, very displeasing, chromatic aberration, halftone, multiple views, logo, too many watermarks, @_@, mismatched pupils, glowing eyes, negative space, blank page",
+  ],
+  [Model.V4]: [
+    "blurry, lowres, error, film grain, scan artifacts, worst quality, bad quality, jpeg artifacts, very displeasing, chromatic aberration, multiple views, logo, too many watermarks",
+    "blurry, lowres, error, worst quality, bad quality, jpeg artifacts, very displeasing",
+  ],
+  [Model.V4_CUR]: [
+    "blurry, lowres, error, film grain, scan artifacts, worst quality, bad quality, jpeg artifacts, very displeasing, chromatic aberration, logo, dated, signature, multiple views, gigantic breasts",
+    "blurry, lowres, error, worst quality, bad quality, jpeg artifacts, very displeasing, logo, dated, signature",
+  ],
+  [Model.V3]: [
+    "lowres, {bad}, error, fewer, extra, missing, worst quality, jpeg artifacts, bad quality, watermark, unfinished, displeasing, chromatic aberration, signature, extra digits, artistic error, username, scan, [abstract]",
+    "lowres, jpeg artifacts, worst quality, watermark, blurry, very displeasing",
+    "lowres, {bad}, error, fewer, extra, missing, worst quality, jpeg artifacts, bad quality, watermark, unfinished, displeasing, chromatic aberration, signature, extra digits, artistic error, username, scan, [abstract], bad anatomy, bad hands, @_@, mismatched pupils, heart-shaped pupils, glowing eyes",
+  ],
+  [Model.FURRY]: [
+    "{{worst quality}}, [displeasing], {unusual pupils}, guide lines, {{unfinished}}, {bad}, url, artist name, {{tall image}}, mosaic, {sketch page}, comic panel, impact (font), [dated], {logo}, ych, {what}, {where is your god now}, {distorted text}, repeated text, {floating head}, {1994}, {widescreen}, absolutely everyone, sequence, {compression artifacts}, hard translated, {cropped}, {commissioner name}, unknown text, high contrast",
+    "{worst quality}, guide lines, unfinished, bad, url, tall image, widescreen, compression artifacts, unknown text",
+  ],
+};
+
+// V5 reuses V4.5 UC presets (same launch capture)
+UC_PRESETS[Model.V5] = UC_PRESETS[Model.V4_5];
+UC_PRESETS[Model.V5_CUR] = UC_PRESETS[Model.V4_5_CUR];
 
 /**
  * Class responsible for processing and validating metadata before sending to API
@@ -27,8 +95,11 @@ export class MetadataProcessor {
    * @returns Processed metadata object
    */
   processMetadata(metadata: Metadata): Metadata {
-    // Create a deep copy to avoid modifying the original
-    const result = JSON.parse(JSON.stringify(metadata)) as Metadata;
+    // Deep copy to avoid modifying the caller's object
+    const result: Metadata =
+      typeof structuredClone === "function"
+        ? structuredClone(metadata)
+        : JSON.parse(JSON.stringify(metadata));
 
     this.applyDefaultValues(result);
     this.handleResolution(result);
@@ -36,19 +107,14 @@ export class MetadataProcessor {
     this.handleUcPreset(result);
     this.handleQualityTags(result);
 
-    // Deduplicate tags (skipped when deduplicate_tags is explicitly false)
-    const shouldDeduplicate = result.deduplicate_tags !== false;
-    result.prompt = result.prompt
-      ? (shouldDeduplicate ? deduplicateTags(result.prompt) : result.prompt)
-      : "";
+    result.prompt = result.prompt ? deduplicateTags(result.prompt) : "";
     result.negative_prompt = result.negative_prompt
-      ? (shouldDeduplicate ? deduplicateTags(result.negative_prompt) : result.negative_prompt)
+      ? deduplicateTags(result.negative_prompt)
       : "";
 
-    // Handle img2img and inpaint specific parameters
     this.handleActionSpecificParameters(result);
 
-    // Handle character-related parameters (defaults before use_coords derivation)
+    // Character prompt defaults must be set before use_coords is derived
     this.handleCharacterPrompts(result);
     this.handleUseCoords(result);
     this.handleStream(result);
@@ -56,12 +122,8 @@ export class MetadataProcessor {
     this.handleV4Prompt(result);
     this.handleV4NegativePrompt(result);
 
-    // Handle model-specific settings
     this.handleModelSpecificSettings(result);
-
-    // Handle sampler-specific settings
     this.handleSamplerSpecificSettings(result);
-
     this.handleInpaintImg2ImgStrength(result);
 
     return result;
@@ -69,9 +131,6 @@ export class MetadataProcessor {
 
   /**
    * Apply default values to metadata
-   *
-   * @param metadata - Metadata to update
-   * @private
    */
   private applyDefaultValues(metadata: Metadata): void {
     metadata.model = metadata.model ?? Model.V4_5;
@@ -92,7 +151,7 @@ export class MetadataProcessor {
     metadata.autoSmea = metadata.autoSmea ?? false;
     // V5 live capture uses params_version 4; older families keep 3 unless the caller sets it.
     if (metadata.params_version == null) {
-      metadata.params_version = isV5Family(metadata.model) ? 4 : 3;
+      metadata.params_version = isV5Family(metadata.model!) ? 4 : 3;
     }
     metadata.prompt = metadata.prompt ?? "1girl, cute";
     metadata.negative_prompt = metadata.negative_prompt ?? "";
@@ -102,26 +161,86 @@ export class MetadataProcessor {
     metadata.legacy = metadata.legacy ?? false;
     metadata.legacy_v3_extend = metadata.legacy_v3_extend ?? false;
 
-    // Handle director reference defaults
     this.applyDirectorReferenceDefaults(metadata);
-
-    // Handle vibe transfer defaults (only if director references are not used)
     this.applyVibeTransferDefaults(metadata);
 
     metadata.stream = undefined;
   }
 
   /**
-   * Handle model-specific settings
-   *
-   * @param metadata - Metadata to update
-   * @private
+   * Apply defaults for director reference (character reference) fields.
+   * When director reference images are present, the per-image arrays are
+   * normalized to matching lengths and vibe transfer parameters are removed
+   * (the two features are mutually exclusive). Without images, all director
+   * reference parameters are dropped.
+   */
+  private applyDirectorReferenceDefaults(metadata: Metadata): void {
+    if (!metadata.director_reference_images?.length) {
+      delete metadata.director_reference_descriptions;
+      delete metadata.director_reference_images;
+      delete metadata.director_reference_information_extracted;
+      delete metadata.director_reference_strength_values;
+      delete metadata.director_reference_secondary_strength_values;
+      return;
+    }
+
+    // Director references replace vibe transfer
+    delete metadata.reference_image_multiple;
+    delete metadata.reference_information_extracted_multiple;
+    delete metadata.reference_strength_multiple;
+    delete metadata.normalize_reference_strength_multiple;
+
+    const count = metadata.director_reference_images.length;
+    const fit = <T>(values: T[] | undefined, fill: () => T): T[] => {
+      const result = (values ?? []).slice(0, count);
+      while (result.length < count) result.push(fill());
+      return result;
+    };
+
+    metadata.director_reference_descriptions = fit(
+      metadata.director_reference_descriptions,
+      () => ({
+        caption: { base_caption: "character", char_captions: [] },
+        legacy_uc: false,
+      }),
+    );
+    metadata.director_reference_information_extracted = fit(
+      metadata.director_reference_information_extracted,
+      () => 1,
+    );
+    metadata.director_reference_strength_values = fit(
+      metadata.director_reference_strength_values,
+      () => 1,
+    );
+    metadata.director_reference_secondary_strength_values = fit(
+      metadata.director_reference_secondary_strength_values,
+      () => 1,
+    );
+  }
+
+  /**
+   * Apply defaults for vibe transfer fields (only when director references
+   * are not in use)
+   */
+  private applyVibeTransferDefaults(metadata: Metadata): void {
+    if (metadata.director_reference_images?.length) return;
+
+    metadata.normalize_reference_strength_multiple =
+      metadata.normalize_reference_strength_multiple ?? true;
+    if (metadata.reference_image_multiple?.length) {
+      metadata.reference_strength_multiple =
+        metadata.reference_strength_multiple ??
+        metadata.reference_image_multiple.map(() => 0.6);
+    }
+  }
+
+  /**
+   * V4 / V4.5 / V5 generate requests go through the streaming endpoint in msgpack format
    */
   private handleStream(metadata: Metadata): void {
-    // V4 / V4.5 / V5 generate uses msgpack stream endpoint
     if (
-      usesV4PromptEnvelope(metadata.model) &&
-      metadata.action == Action.GENERATE
+      usesV4PromptEnvelope(metadata.model!) &&
+      metadata.action === Action.GENERATE
     ) {
       metadata.stream = "msgpack";
     }
@@ -129,9 +248,6 @@ export class MetadataProcessor {
 
   /**
    * Handle action-specific parameters (img2img and inpaint)
-   *
-   * @param metadata - Metadata to update
-   * @private
    */
   private handleActionSpecificParameters(metadata: Metadata): void {
     if (
@@ -148,14 +264,10 @@ export class MetadataProcessor {
   }
 
   /**
-   * Handle model-specific settings
-   *
-   * @param metadata - Metadata to update
-   * @private
+   * Drop V3-only settings for V4+ / V5 models (v4_prompt envelope family)
    */
   private handleModelSpecificSettings(metadata: Metadata): void {
-    // Drop sm and sm_dyn for V4+ / V5 models (v4_prompt envelope family)
-    if (metadata.model && usesV4PromptEnvelope(metadata.model)) {
+    if (usesV4PromptEnvelope(metadata.model!)) {
       metadata.sm = undefined;
       metadata.sm_dyn = undefined;
     }
@@ -163,9 +275,6 @@ export class MetadataProcessor {
 
   /**
    * Handle sampler-specific settings
-   *
-   * @param metadata - Metadata to update
-   * @private
    */
   private handleSamplerSpecificSettings(metadata: Metadata): void {
     if (metadata.sampler === Sampler.EULER_ANC) {
@@ -175,167 +284,45 @@ export class MetadataProcessor {
   }
 
   /**
-   * Handle quality tags based on the model
-   * If qualityToggle is true, append quality tags to the prompt
-   *
-   * @param metadata - Metadata to update
-   * @private
+   * Append model-specific quality tags to the prompt when qualityToggle is on
    */
   handleQualityTags(metadata: Metadata): void {
-    if (!metadata.qualityToggle) {
-      return;
+    if (!metadata.qualityToggle) return;
+
+    const tags = QUALITY_TAGS[baseModel(metadata.model!)];
+    if (tags) {
+      metadata.prompt = metadata.prompt ? `${metadata.prompt}, ${tags}` : tags;
     }
-
-    let qualityTags = "";
-
-    if (
-      metadata.model === Model.V4_5 ||
-      metadata.model === Model.V4_5_INP ||
-      metadata.model === Model.V5 ||
-      metadata.model === Model.V5_INP
-    ) {
-      // V5 Full quality tags match V4.5 Full in the launch capture
-      qualityTags = ", very aesthetic, masterpiece, no text";
-    } else if (
-      metadata.model === Model.V4_5_CUR ||
-      metadata.model === Model.V4_5_CUR_INP ||
-      metadata.model === Model.V5_CUR ||
-      metadata.model === Model.V5_CUR_INP
-    ) {
-      qualityTags =
-        ", location, masterpiece, no text, -0.8::feet::, rating:general";
-    } else if (metadata.model === Model.V4 || metadata.model === Model.V4_INP) {
-      qualityTags = ", no text, best quality, very aesthetic, absurdres";
-    } else if (
-      metadata.model === Model.V4_CUR ||
-      metadata.model === Model.V4_CUR_INP
-    ) {
-      qualityTags =
-        ", rating:general, amazing quality, very aesthetic, absurdres";
-    } else if (metadata.model === Model.V3 || metadata.model === Model.V3_INP) {
-      qualityTags =
-        ", best quality, amazing quality, very aesthetic, absurdres";
-    } else if (
-      metadata.model === Model.FURRY ||
-      metadata.model === Model.FURRY_INP
-    ) {
-      qualityTags = ", {best quality}, {amazing quality}";
-    }
-
-    metadata.prompt += qualityTags;
   }
 
   /**
-   * Handle UC preset based on model
-   * Appends model-specific negative prompt tags based on the ucPreset value
-   *
-   * @param metadata - Metadata to update
-   * @private
+   * Prepend the model-specific negative prompt preset selected by ucPreset
    */
   handleUcPreset(metadata: Metadata): void {
-    let uc = "";
+    const presets = UC_PRESETS[baseModel(metadata.model!)];
+    const uc = presets?.[metadata.ucPreset ?? 0];
+    if (!uc) return;
 
-    if (
-      metadata.model === Model.V4_5 ||
-      metadata.model === Model.V4_5_INP ||
-      metadata.model === Model.V5 ||
-      metadata.model === Model.V5_INP
-    ) {
-      if (metadata.ucPreset === 0) {
-        uc =
-          ", nsfw, lowres, artistic error, film grain, scan artifacts, worst quality, bad quality, jpeg artifacts, very displeasing, chromatic aberration, dithering, halftone, screentone, multiple views, logo, too many watermarks, negative space, blank page";
-      } else if (metadata.ucPreset === 1) {
-        uc =
-          ", nsfw, lowres, artistic error, scan artifacts, worst quality, bad quality, jpeg artifacts, multiple views, very displeasing, too many watermarks, negative space, blank page";
-      } else if (metadata.ucPreset === 2) {
-        uc =
-          ", nsfw, {worst quality}, distracting watermark, unfinished, bad quality, {widescreen}, upscale, {sequence}, {{grandfathered content}}, blurred foreground, chromatic aberration, sketch, everyone, [sketch background], simple, [flat colors], ych (character), outline, multiple scenes, [[horror (theme)]], comic";
-      } else if (metadata.ucPreset === 3) {
-        uc =
-          ", nsfw, lowres, artistic error, film grain, scan artifacts, worst quality, bad quality, jpeg artifacts, very displeasing, chromatic aberration, dithering, halftone, screentone, multiple views, logo, too many watermarks, negative space, blank page, @_@, mismatched pupils, glowing eyes, bad anatomy";
-      }
-    } else if (
-      metadata.model === Model.V4_5_CUR ||
-      metadata.model === Model.V4_5_CUR_INP ||
-      metadata.model === Model.V5_CUR ||
-      metadata.model === Model.V5_CUR_INP
-    ) {
-      if (metadata.ucPreset === 0) {
-        uc =
-          ", blurry, lowres, upscaled, artistic error, film grain, scan artifacts, worst quality, bad quality, jpeg artifacts, very displeasing, chromatic aberration, halftone, multiple views, logo, too many watermarks, negative space, blank page";
-      } else if (metadata.ucPreset === 1) {
-        uc =
-          ", blurry, lowres, upscaled, artistic error, scan artifacts, jpeg artifacts, logo, too many watermarks, negative space, blank page";
-      } else if (metadata.ucPreset === 2) {
-        uc =
-          ", blurry, lowres, upscaled, artistic error, film grain, scan artifacts, bad anatomy, bad hands, worst quality, bad quality, jpeg artifacts, very displeasing, chromatic aberration, halftone, multiple views, logo, too many watermarks, @_@, mismatched pupils, glowing eyes, negative space, blank page";
-      }
-    } else if (metadata.model === Model.V4 || metadata.model === Model.V4_INP) {
-      if (metadata.ucPreset === 0) {
-        uc =
-          ", blurry, lowres, error, film grain, scan artifacts, worst quality, bad quality, jpeg artifacts, very displeasing, chromatic aberration, multiple views, logo, too many watermarks";
-      } else if (metadata.ucPreset === 1) {
-        uc =
-          ", blurry, lowres, error, worst quality, bad quality, jpeg artifacts, very displeasing";
-      }
-    } else if (
-      metadata.model === Model.V4_CUR ||
-      metadata.model === Model.V4_CUR_INP
-    ) {
-      if (metadata.ucPreset === 0) {
-        uc =
-          ", blurry, lowres, error, film grain, scan artifacts, worst quality, bad quality, jpeg artifacts, very displeasing, chromatic aberration, logo, dated, signature, multiple views, gigantic breasts";
-      } else if (metadata.ucPreset === 1) {
-        uc =
-          ", blurry, lowres, error, worst quality, bad quality, jpeg artifacts, very displeasing, logo, dated, signature";
-      }
-    } else if (metadata.model === Model.V3 || metadata.model === Model.V3_INP) {
-      if (metadata.ucPreset === 0) {
-        uc =
-          ", lowres, {bad}, error, fewer, extra, missing, worst quality, jpeg artifacts, bad quality, watermark, unfinished, displeasing, chromatic aberration, signature, extra digits, artistic error, username, scan, [abstract],";
-      } else if (metadata.ucPreset === 1) {
-        uc =
-          ", lowres, jpeg artifacts, worst quality, watermark, blurry, very displeasing,";
-      } else if (metadata.ucPreset === 2) {
-        uc =
-          ", lowres, {bad}, error, fewer, extra, missing, worst quality, jpeg artifacts, bad quality, watermark, unfinished, displeasing, chromatic aberration, signature, extra digits, artistic error, username, scan, [abstract], bad anatomy, bad hands, @_@, mismatched pupils, heart-shaped pupils, glowing eyes,";
-      }
-    } else if (
-      metadata.model === Model.FURRY ||
-      metadata.model === Model.FURRY_INP
-    ) {
-      if (metadata.ucPreset === 0) {
-        uc =
-          ", {{worst quality}}, [displeasing], {unusual pupils}, guide lines, {{unfinished}}, {bad}, url, artist name, {{tall image}}, mosaic, {sketch page}, comic panel, impact (font), [dated], {logo}, ych, {what}, {where is your god now}, {distorted text}, repeated text, {floating head}, {1994}, {widescreen}, absolutely everyone, sequence, {compression artifacts}, hard translated, {cropped}, {commissioner name}, unknown text, high contrast,";
-      } else if (metadata.ucPreset === 1) {
-        uc =
-          ", {worst quality}, guide lines, unfinished, bad, url, tall image, widescreen, compression artifacts, unknown text,";
-      }
-    }
-
-    metadata.negative_prompt = uc + ", " + metadata.negative_prompt;
+    metadata.negative_prompt = metadata.negative_prompt
+      ? `${uc}, ${metadata.negative_prompt}`
+      : uc;
   }
 
   /**
-   * Handle img2img strength for V4.5 models
-   * Sets default strength if not provided and adds img2img object when needed
-   *
-   * @param metadata - Metadata to update
-   * @private
+   * Default inpaint img2img strength for V4.5 models. When below 1, the API
+   * additionally expects an img2img sub-object with color correction.
    */
   handleInpaintImg2ImgStrength(metadata: Metadata): void {
     if (metadata.model === Model.V4_5 || metadata.model === Model.V4_5_INP) {
-      // Use metadata.strength as fallback if inpaintImg2ImgStrength is not provided
-      metadata.inpaintImg2ImgStrength = metadata.inpaintImg2ImgStrength ?? metadata.strength ?? 1;
-      
-      // Only add img2img object if inpaintImg2ImgStrength is less than 1
+      metadata.inpaintImg2ImgStrength =
+        metadata.inpaintImg2ImgStrength ?? metadata.strength ?? 1;
+
       if (metadata.inpaintImg2ImgStrength < 1) {
         metadata.img2img = {
           strength: metadata.inpaintImg2ImgStrength,
-          color_correct: true
+          color_correct: true,
         };
       } else {
-        // Remove img2img object if inpaintImg2ImgStrength is 1 or greater
         delete metadata.img2img;
       }
     }
@@ -343,84 +330,49 @@ export class MetadataProcessor {
 
   /**
    * Determine if coordinates should be used based on character prompt positions.
-   * Must run after handleCharacterPrompts so missing centers are already 0.5.
+   * Must run after handleCharacterPrompts so center defaults are in place.
    * Nullish centers still count as auto-position (use_coords false).
-   *
-   * @param metadata - Metadata to update
-   * @private
    */
   handleUseCoords(metadata: Metadata): void {
-    if (!metadata.characterPrompts?.length) {
-      metadata.use_coords = false;
-      return;
-    }
-
-    metadata.use_coords = metadata.characterPrompts.some((cp) => {
-      const x = cp.center?.x ?? 0.5;
-      const y = cp.center?.y ?? 0.5;
-      return x !== 0.5 || y !== 0.5;
-    });
+    metadata.use_coords =
+      metadata.characterPrompts?.some((cp) => {
+        const x = cp.center?.x ?? 0.5;
+        const y = cp.center?.y ?? 0.5;
+        return x !== 0.5 || y !== 0.5;
+      }) ?? false;
   }
 
   /**
    * Set default values for character prompts and deduplicate tags
-   *
-   * @param metadata - Metadata to update
-   * @private
    */
   handleCharacterPrompts(metadata: Metadata): void {
-    if (!metadata.characterPrompts?.length) {
-      return;
-    }
-
-    // Set default values for each character prompt
-    const shouldDeduplicate = metadata.deduplicate_tags !== false;
-    metadata.characterPrompts.forEach((cp) => {
+    metadata.characterPrompts?.forEach((cp) => {
       cp.enabled = cp.enabled ?? true;
-      cp.prompt = cp.prompt
-        ? (shouldDeduplicate ? deduplicateTags(cp.prompt) : cp.prompt)
-        : "1girl, cute";
-      cp.uc = cp.uc
-        ? (shouldDeduplicate ? deduplicateTags(cp.uc) : cp.uc)
-        : "lowres, aliasing,";
-
-      // Ensure center coordinates exist with defaults
-      cp.center = cp.center || { x: 0.5, y: 0.5 };
-      cp.center.x = cp.center.x ?? 0.5;
-      cp.center.y = cp.center.y ?? 0.5;
+      cp.prompt = cp.prompt ? deduplicateTags(cp.prompt) : "1girl, cute";
+      cp.uc = cp.uc ? deduplicateTags(cp.uc) : "lowres, aliasing";
+      cp.center = {
+        x: cp.center?.x ?? 0.5,
+        y: cp.center?.y ?? 0.5,
+      };
     });
   }
 
   /**
-   * Handle the V4 prompt format for V4/V4.5 models
-   *
-   * @param metadata - Metadata to update
-   * @private
+   * Build the V4 prompt structure for V4 / V4.5 / V5 models
    */
   handleV4Prompt(metadata: Metadata): void {
-    // Skip if v4Prompt is already set
-    if (metadata.v4_prompt) {
-      return;
-    }
-
-    // Skip if model is not V4 / V4.5 / V5 (v4_prompt envelope)
-    if (!metadata.model || !usesV4PromptEnvelope(metadata.model)) {
-      return;
-    }
+    if (metadata.v4_prompt || !usesV4PromptEnvelope(metadata.model!)) return;
 
     const charCaptions: CharacterCaption[] = [];
-
-    // Create character captions based on enabled character prompts
     metadata.characterPrompts?.forEach((cp) => {
       if (cp.enabled) {
         charCaptions.push({
           char_caption: cp.prompt,
-          centers: [cp.center],
+          centers: [cp.center!],
         });
       }
     });
 
-    // Set up V4 prompt format
     metadata.v4_prompt = {
       caption: {
         base_caption: metadata.prompt || "",
@@ -432,35 +384,22 @@ export class MetadataProcessor {
   }
 
   /**
-   * Handle the V4 negative prompt format for V4/V4.5 models
-   *
-   * @param metadata - Metadata to update
-   * @private
+   * Build the V4 negative prompt structure for V4 / V4.5 / V5 models
    */
   handleV4NegativePrompt(metadata: Metadata): void {
-    // Skip if v4NegativePrompt is already set
-    if (metadata.v4_negative_prompt) {
+    if (metadata.v4_negative_prompt || !usesV4PromptEnvelope(metadata.model!))
       return;
-    }
-
-    // Skip if model is not V4 / V4.5 / V5 (v4_prompt envelope)
-    if (!metadata.model || !usesV4PromptEnvelope(metadata.model)) {
-      return;
-    }
 
     const charCaptions: CharacterCaption[] = [];
-
-    // Create character captions based on enabled character prompts with UC
     metadata.characterPrompts?.forEach((cp) => {
       if (cp.enabled && cp.uc) {
         charCaptions.push({
           char_caption: cp.uc,
-          centers: [cp.center],
+          centers: [cp.center!],
         });
       }
     });
 
-    // Set up V4 negative prompt format
     metadata.v4_negative_prompt = {
       caption: {
         base_caption: metadata.negative_prompt || "",
@@ -471,205 +410,28 @@ export class MetadataProcessor {
   }
 
   /**
-   * Apply default values for director reference fields (Precise Reference v2).
-   * Parallel arrays are padded to match director_reference_images length (max 6).
-   * Existing valid base_caption values are preserved; invalid captions normalize to "character&style".
-   * Strength values are clamped to [0, 1]. Vibe transfer fields are stripped when director refs are set.
-   * Img2img (`image` + `action: IMG2IMG`) is allowed alongside director references.
-   *
-   * @param metadata - Metadata to update
-   * @private
-   */
-  private applyDirectorReferenceDefaults(metadata: Metadata): void {
-    if (!metadata.director_reference_images?.length) {
-      delete metadata.director_reference_descriptions;
-      delete metadata.director_reference_images;
-      delete metadata.director_reference_information_extracted;
-      delete metadata.director_reference_strength_values;
-      delete metadata.director_reference_secondary_strength_values;
-      return;
-    }
-
-    delete metadata.reference_image_multiple;
-    delete metadata.reference_information_extracted_multiple;
-    delete metadata.reference_strength_multiple;
-    delete metadata.normalize_reference_strength_multiple;
-
-    if (metadata.director_reference_images.length > MAX_DIRECTOR_REFERENCES) {
-      metadata.director_reference_images =
-        metadata.director_reference_images.slice(0, MAX_DIRECTOR_REFERENCES);
-    }
-
-    const imageCount = metadata.director_reference_images.length;
-
-    metadata.director_reference_descriptions =
-      metadata.director_reference_descriptions ?? [];
-    metadata.director_reference_information_extracted =
-      metadata.director_reference_information_extracted ?? [];
-    metadata.director_reference_strength_values =
-      metadata.director_reference_strength_values ?? [];
-    metadata.director_reference_secondary_strength_values =
-      metadata.director_reference_secondary_strength_values ?? [];
-
-    while (metadata.director_reference_descriptions.length < imageCount) {
-      metadata.director_reference_descriptions.push(
-        this.defaultDirectorReferenceDescription(),
-      );
-    }
-
-    for (let i = 0; i < imageCount; i++) {
-      metadata.director_reference_descriptions[i] =
-        this.normalizeDirectorReferenceDescription(
-          metadata.director_reference_descriptions[i],
-        );
-    }
-
-    while (metadata.director_reference_information_extracted.length < imageCount) {
-      metadata.director_reference_information_extracted.push(1);
-    }
-
-    metadata.director_reference_strength_values =
-      this.padAndClampDirectorStrengths(
-        metadata.director_reference_strength_values,
-        imageCount,
-      );
-    metadata.director_reference_secondary_strength_values =
-      this.padAndClampDirectorStrengths(
-        metadata.director_reference_secondary_strength_values,
-        imageCount,
-      );
-
-    metadata.director_reference_descriptions =
-      metadata.director_reference_descriptions.slice(0, imageCount);
-    metadata.director_reference_information_extracted =
-      metadata.director_reference_information_extracted.slice(0, imageCount);
-  }
-
-  private defaultDirectorReferenceDescription(): DirectorReferenceDescription {
-    return {
-      caption: {
-        base_caption: "character&style",
-        char_captions: [],
-      },
-      legacy_uc: false,
-    };
-  }
-
-  private normalizeDirectorReferenceDescription(
-    desc: DirectorReferenceDescription | undefined,
-  ): DirectorReferenceDescription {
-    if (!desc) {
-      return this.defaultDirectorReferenceDescription();
-    }
-
-    if (!desc.caption) {
-      desc.caption = {
-        base_caption: "character&style",
-        char_captions: [],
-      };
-    } else {
-      if (!isDirectorReferenceBaseCaption(desc.caption.base_caption)) {
-        desc.caption.base_caption = "character&style";
-      }
-      desc.caption.char_captions = desc.caption.char_captions ?? [];
-    }
-
-    desc.legacy_uc = desc.legacy_uc ?? false;
-    return desc;
-  }
-
-  private padAndClampDirectorStrengths(
-    values: number[],
-    imageCount: number,
-  ): number[] {
-    const result = values.slice(0, imageCount);
-    for (let i = 0; i < result.length; i++) {
-      if (result[i] !== undefined) {
-        result[i] = Math.min(1, Math.max(0, result[i]));
-      }
-    }
-    while (result.length < imageCount) {
-      result.push(1);
-    }
-    return result;
-  }
-
-  /**
-   * Apply default values for vibe transfer fields
-   * Only applies when director references are not being used
-   *
-   * @param metadata - Metadata to update
-   * @private
-   */
-  private applyVibeTransferDefaults(metadata: Metadata): void {
-    // Only apply vibe transfer defaults if director references are not being used
-    if (!metadata.director_reference_images?.length) {
-      metadata.normalize_reference_strength_multiple =
-        metadata.normalize_reference_strength_multiple ?? true;
-      metadata.reference_image_multiple = metadata.reference_image_multiple ?? undefined;
-      metadata.reference_strength_multiple = metadata.reference_strength_multiple ?? undefined;
-    }
-  }
-
-  /**
-   * Get width and height from a resolution preset
-   *
-   * @param preset - Resolution preset
-   * @returns [width, height] tuple
-   */
-  private getResolutionDimensions(preset: string): [number, number] {
-    const dimensionsMap: Record<string, [number, number]> = {
-      small_portrait: [512, 768],
-      small_landscape: [768, 512],
-      small_square: [640, 640],
-      normal_portrait: [832, 1216],
-      normal_landscape: [1216, 832],
-      normal_square: [1024, 1024],
-      large_portrait: [1024, 1536],
-      large_landscape: [1536, 1024],
-      large_square: [1472, 1472],
-      wallpaper_portrait: [1088, 1920],
-      wallpaper_landscape: [1920, 1088],
-    };
-
-    return dimensionsMap[preset] || [832, 1216]; // Default to normal_portrait if preset not found
-  }
-
-  /**
-   * Handle the resolution preset. If width and height are not set, use the resolution preset.
-   * If width and height are set, override the resolution preset.
-   * If width or height are not multiple of 64, round them to the nearest multiple of 64.
-   * If the product of the width and height is not in the allowed range (64-3047424), raise ValueError.
-   *
-   * @param metadata - Metadata to update
-   * @private
+   * Resolve width/height from the resolution preset when not explicitly set.
+   * Explicit dimensions are rounded up to the nearest multiple of 64 and the
+   * total pixel count is validated against the allowed range.
    */
   private handleResolution(metadata: Metadata): void {
     if (metadata.width == null || metadata.height == null) {
-      // Use resolution preset if width/height not provided
-      if (metadata.resPreset) {
-        const dimensions = this.getResolutionDimensions(metadata.resPreset);
-        metadata.width = dimensions[0];
-        metadata.height = dimensions[1];
-      } else {
-        // Default to normal_square if no preset specified
-        metadata.width = 832;
-        metadata.height = 1216;
-      }
+      const preset = metadata.resPreset ?? Resolution.NORMAL_PORTRAIT;
+      const [width, height] = RESOLUTION_DIMENSIONS[preset];
+      metadata.width = width;
+      metadata.height = height;
     } else {
-      // Round width and height to the nearest multiple of 64
-      metadata.width = Math.floor((metadata.width + 63) / 64) * 64;
-      metadata.height = Math.floor((metadata.height + 63) / 64) * 64;
+      metadata.width = Math.ceil(metadata.width / 64) * 64;
+      metadata.height = Math.ceil(metadata.height / 64) * 64;
     }
 
-    // Validate the total resolution is within allowed range
     const totalPixels = metadata.width * metadata.height;
-    const minPixels = 64 * 64; // 4096
+    const minPixels = 64 * 64;
     const maxPixels = 3047424;
 
     if (totalPixels < minPixels || totalPixels > maxPixels) {
       throw new Error(
-        `The maximum allowed total resolution is ${maxPixels} px, got ${metadata.width}x${metadata.height}=${totalPixels}.`,
+        `Total resolution must be between ${minPixels} and ${maxPixels} px, got ${metadata.width}x${metadata.height}=${totalPixels}.`,
       );
     }
   }

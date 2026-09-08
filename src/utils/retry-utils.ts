@@ -6,7 +6,7 @@ export const DEFAULT_RETRY_CONFIG: Required<RetryConfig> = {
   maxRetries: 3,
   baseDelay: 1000, // 1 second
   maxDelay: 30000, // 30 seconds
-  retryStatusCodes: [429],
+  retryStatusCodes: [429, 500, 502, 503, 504],
 };
 
 /**

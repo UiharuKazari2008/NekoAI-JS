@@ -1,9 +1,11 @@
 /**
  * Utility functions to detect and handle different execution environments
  * (browser vs. Node.js) and platform-specific behaviors.
+ *
+ * Node built-ins are loaded via dynamic import so the library works in both
+ * CJS and ESM builds, and browser bundlers can drop these paths entirely.
  */
 
-// Define types for Node.js modules to be used conditionally
 export type FSModule = typeof import("fs");
 export type PathModule = typeof import("path");
 
@@ -15,51 +17,49 @@ export function isNodeEnvironment(): boolean {
   return typeof window === "undefined";
 }
 
+let fsModule: FSModule | null | undefined;
+let pathModule: PathModule | null | undefined;
+
 /**
- * Helper function to safely use Node.js modules
- * @returns Object containing Node.js modules if available, null otherwise
+ * Get the Node.js fs module, if available
+ * @returns The fs module or null in browser environments
  */
-export function getNodeModules(): {
-  fs: FSModule | null;
-  path: PathModule | null;
-} {
-  if (isNodeEnvironment()) {
-    try {
-      // Node.js environment
-      return {
-        fs: require("fs"),
-        path: require("path"),
-      };
-    } catch (error) {
-      console.warn("Failed to load Node.js modules:", error);
-      return { fs: null, path: null };
-    }
+export async function getNodeFs(): Promise<FSModule | null> {
+  if (fsModule !== undefined) return fsModule;
+  if (!isNodeEnvironment()) return (fsModule = null);
+  try {
+    fsModule = await import("fs");
+  } catch {
+    fsModule = null;
   }
-  // Browser environment
-  return { fs: null, path: null };
+  return fsModule;
 }
 
 /**
  * Get the Node.js path module, if available
- * @returns The path module or null if in browser environment
+ * @returns The path module or null in browser environments
  */
-export function getNodePath(): PathModule | null {
-  const { path } = getNodeModules();
-  return path;
+export async function getNodePath(): Promise<PathModule | null> {
+  if (pathModule !== undefined) return pathModule;
+  if (!isNodeEnvironment()) return (pathModule = null);
+  try {
+    pathModule = await import("path");
+  } catch {
+    pathModule = null;
+  }
+  return pathModule;
 }
 
 /**
- * Try to load the Node.js canvas module
- * This is separated to avoid bundling issues in browser environments
+ * Try to load the optional Node.js canvas module
+ * @returns The canvas module or null if unavailable
  */
-export function loadNodeCanvas() {
+export async function loadNodeCanvas(): Promise<any | null> {
+  if (!isNodeEnvironment()) return null;
   try {
-    if (isNodeEnvironment()) {
-      return require("canvas");
-    }
-    return null;
-  } catch (error) {
-    console.warn("Failed to load Node.js canvas module:", error);
+    const mod = await import("canvas");
+    return (mod as any).default ?? mod;
+  } catch {
     return null;
   }
 }

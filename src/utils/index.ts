@@ -3,7 +3,6 @@
  * Exports functions grouped by their domains of responsibility
  */
 
-// Re-export all utility functions from individual modules
 export * from "./platform-utils";
 export * from "./fs-utils";
 export * from "./http-utils";
@@ -21,18 +20,3 @@ export {
   type ImageMetadata,
   type ImageSummary,
 } from "./parse-utils";
-
-export {
-  generateXCorrelationId,
-  generateXInitiatedAt,
-  prepHeaders,
-  handleResponse,
-  throwResponseError,
-  StreamingMsgpackParser,
-  StreamingSSEParser,
-  parseStreamEvents,
-  parseMsgpackEvents,
-  parseSSEEvents,
-  parseMsgpackMessage,
-  createMsgpackEvent,
-} from "./http-utils";

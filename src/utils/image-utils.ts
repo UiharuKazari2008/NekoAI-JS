@@ -22,9 +22,9 @@ export function base64ToUint8Array(base64: string): Uint8Array {
  */
 export function uint8ArrayToBase64(array: Uint8Array): string {
   let binary = "";
-  const len = array.byteLength;
-  for (let i = 0; i < len; i++) {
-    binary += String.fromCharCode(array[i]);
+  const chunkSize = 0x8000;
+  for (let i = 0; i < array.length; i += chunkSize) {
+    binary += String.fromCharCode(...array.subarray(i, i + chunkSize));
   }
   return btoa(binary);
 }
@@ -37,66 +37,17 @@ export function uint8ArrayToBase64(array: Uint8Array): string {
  * @returns Promise resolving to a ParsedImage object with width, height, and base64 data
  */
 export async function parseImage(input: ImageInput): Promise<ParsedImage> {
-  // Handle Node.js environment
-  if (isNodeEnvironment()) {
-    return parseImageInNodeJs(input);
-  } else {
-    return parseImageInBrowser(input);
-  }
+  return isNodeEnvironment()
+    ? parseImageInNodeJs(input)
+    : parseImageInBrowser(input);
 }
 
 /**
- * Parse an image in Node.js environment
- *
- * @param input - Various image input formats in Node.js
- * @returns Promise resolving to a ParsedImage object
+ * Parse an image in Node.js environment using the optional canvas module
  */
 async function parseImageInNodeJs(input: ImageInput): Promise<ParsedImage> {
-  // Node.js environment
-  if (typeof input === "string") {
-    // Path to file in Node.js
-    try {
-      const fs = require("fs");
-
-      // Load the canvas module (Node.js only)
-      const canvasModule = loadNodeCanvas();
-      if (!canvasModule) {
-        throw new Error(
-          "Canvas module not available. Please install it with: npm install canvas",
-        );
-      }
-
-      const { createCanvas, loadImage } = canvasModule;
-
-      const image = await loadImage(input);
-      const canvas = createCanvas(image.width, image.height);
-      const ctx = canvas.getContext("2d");
-      ctx.drawImage(image, 0, 0);
-
-      // Determine content type based on file extension
-      const isJpeg =
-        input.toLowerCase().endsWith(".jpg") ||
-        input.toLowerCase().endsWith(".jpeg");
-      const contentType = isJpeg ? "image/jpeg" : "image/png";
-
-      const base64Data = canvas
-        .toDataURL(contentType)
-        .replace(new RegExp(`^data:${contentType};base64,`), "");
-
-      return {
-        width: image.width,
-        height: image.height,
-        base64: base64Data,
-      };
-    } catch (error: unknown) {
-      const errorMessage =
-        error instanceof Error ? error.message : "Unknown error";
-      throw new Error(`Failed to load image from path: ${errorMessage}`);
-    }
-  } else if (input instanceof Uint8Array) {
-    // Direct Uint8Array data in Node.js
-    // Load the canvas module (Node.js only)
-    const canvasModule = loadNodeCanvas();
+  if (typeof input === "string" || input instanceof Uint8Array) {
+    const canvasModule = await loadNodeCanvas();
     if (!canvasModule) {
       throw new Error(
         "Canvas module not available. Please install it with: npm install canvas",
@@ -104,33 +55,28 @@ async function parseImageInNodeJs(input: ImageInput): Promise<ParsedImage> {
     }
 
     const { createCanvas, loadImage } = canvasModule;
-    const tempBuffer = Buffer.from(input);
+    const source =
+      typeof input === "string" ? input : Buffer.from(input.buffer, input.byteOffset, input.byteLength);
 
     try {
-      const image = await loadImage(tempBuffer);
+      const image = await loadImage(source);
       const canvas = createCanvas(image.width, image.height);
       const ctx = canvas.getContext("2d");
       ctx.drawImage(image, 0, 0);
 
-      const base64Data = canvas
+      const base64 = canvas
         .toDataURL("image/png")
         .replace(/^data:image\/png;base64,/, "");
 
-      return {
-        width: image.width,
-        height: image.height,
-        base64: base64Data,
-      };
+      return { width: image.width, height: image.height, base64 };
     } catch (error: unknown) {
       const errorMessage =
         error instanceof Error ? error.message : "Unknown error";
-      throw new Error(`Failed to load image from Uint8Array: ${errorMessage}`);
+      throw new Error(`Failed to load image: ${errorMessage}`);
     }
   } else if (input instanceof ArrayBuffer) {
-    // Convert ArrayBuffer to Uint8Array
     return parseImageInNodeJs(new Uint8Array(input));
   } else if (typeof input === "object" && input !== null) {
-    // Handle object formats
     if ("data" in input && input.data instanceof Uint8Array) {
       return parseImageInNodeJs(input.data);
     } else if ("url" in input && typeof input.url === "string") {
@@ -143,13 +89,9 @@ async function parseImageInNodeJs(input: ImageInput): Promise<ParsedImage> {
 
 /**
  * Parse an image in browser environment
- *
- * @param input - Various image input formats in browser
- * @returns Promise resolving to a ParsedImage object
  */
 async function parseImageInBrowser(input: ImageInput): Promise<ParsedImage> {
   try {
-    // Create a canvas element for processing
     const canvas = document.createElement("canvas");
     const ctx = canvas.getContext("2d");
 
@@ -160,10 +102,8 @@ async function parseImageInBrowser(input: ImageInput): Promise<ParsedImage> {
     let imageElement: HTMLImageElement | null = null;
 
     if (input instanceof HTMLImageElement) {
-      // Direct image element
       imageElement = input;
     } else if (input instanceof HTMLCanvasElement) {
-      // Canvas element - extract data directly
       return {
         width: input.width,
         height: input.height,
@@ -172,74 +112,42 @@ async function parseImageInBrowser(input: ImageInput): Promise<ParsedImage> {
           .replace(/^data:image\/png;base64,/, ""),
       };
     } else if (typeof input === "string") {
-      // String could be a data URL or a remote URL
-      imageElement = new Image();
       if (
         input.startsWith("data:") ||
         input.startsWith("blob:") ||
         input.startsWith("http")
       ) {
-        // Already a URL format
-        imageElement.src = input;
+        imageElement = await loadImageElement(input);
       } else {
-        // Might be a path, which won't work in browser - warn the user
         throw new Error(
           "File paths are not supported in browser environment. Use a Blob, File, or Data URL instead.",
         );
       }
-
-      // Wait for the image to load
-      await new Promise<void>((resolve, reject) => {
-        if (imageElement) {
-          imageElement.onload = () => resolve();
-          imageElement.onerror = () =>
-            reject(new Error("Failed to load image from URL"));
-        } else {
-          reject(new Error("Image element is not initialized"));
-        }
-      });
     } else if (input instanceof Blob || input instanceof File) {
-      // Convert Blob/File to an image element
       const url = URL.createObjectURL(input);
-      imageElement = new Image();
-      imageElement.src = url;
-
-      // Wait for the image to load
-      await new Promise<void>((resolve, reject) => {
-        if (imageElement) {
-          imageElement.onload = () => resolve();
-          imageElement.onerror = () =>
-            reject(new Error("Failed to load image from Blob/File"));
-        } else {
-          reject(new Error("Image element is not initialized"));
-        }
-      });
-
-      // Clean up the object URL
-      URL.revokeObjectURL(url);
+      try {
+        imageElement = await loadImageElement(url);
+      } finally {
+        URL.revokeObjectURL(url);
+      }
     } else if (input instanceof ArrayBuffer || input instanceof Uint8Array) {
-      // Convert ArrayBuffer/Uint8Array to Blob, then to image
       const buffer =
         input instanceof ArrayBuffer ? new Uint8Array(input) : input;
-      const blob = new Blob([buffer], { type: "image/png" });
-      return parseImageInBrowser(blob);
+      return parseImageInBrowser(
+        new Blob([buffer as unknown as BlobPart], { type: "image/png" }),
+      );
     } else if (typeof input === "object" && input !== null) {
-      // Handle object formats
       if ("data" in input && input.data instanceof Uint8Array) {
         return parseImageInBrowser(input.data);
       } else if ("url" in input && typeof input.url === "string") {
         return parseImageInBrowser(input.url);
+      } else {
+        throw new Error("Unsupported image input format");
       }
     } else {
       throw new Error("Unsupported image input format");
     }
 
-    // Check if imageElement was successfully initialized
-    if (!imageElement) {
-      throw new Error("Failed to create image element");
-    }
-
-    // Draw the image to canvas and extract data
     canvas.width = imageElement.width;
     canvas.height = imageElement.height;
     ctx.drawImage(imageElement, 0, 0);
@@ -256,4 +164,14 @@ async function parseImageInBrowser(input: ImageInput): Promise<ParsedImage> {
       error instanceof Error ? error.message : "Unknown error";
     throw new Error(`Failed to parse image in browser: ${errorMessage}`);
   }
+}
+
+function loadImageElement(src: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error(`Failed to load image from ${src.slice(0, 64)}`));
+    img.src = src;
+  });
 }

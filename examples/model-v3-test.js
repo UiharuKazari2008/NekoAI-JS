@@ -17,7 +17,7 @@ async function testModelV3() {
         model: Model.V3,
         resPreset: Resolution.NORMAL_PORTRAIT,
         n_samples: 1,
-        steps: 28,
+        steps: 29,
         scale: 6.3,
         sampler: Sampler.DPM2S_ANC,
         sm: true,

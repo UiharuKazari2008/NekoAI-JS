@@ -1,4 +1,15 @@
-import { isNodeEnvironment, getNodeModules } from "./platform-utils";
+import { getNodeFs, getNodePath, isNodeEnvironment } from "./platform-utils";
+
+/**
+ * Timestamp string used in generated filenames (YYYYMMDD_HHMMSS)
+ */
+export function timestampString(): string {
+  return new Date()
+    .toISOString()
+    .replace(/[-:]/g, "")
+    .replace("T", "_")
+    .substring(0, 15);
+}
 
 /**
  * Creates a timestamp-based filename
@@ -7,28 +18,18 @@ import { isNodeEnvironment, getNodeModules } from "./platform-utils";
  * @returns Formatted filename
  */
 export function createFilename(prefix?: string, extension = "png"): string {
-  const timestamp = new Date()
-    .toISOString()
-    .replace(/[-:]/g, "")
-    .replace("T", "_")
-    .substring(0, 15);
-
-  return `${prefix ? prefix + "_" : ""}${timestamp}.${extension}`;
+  return `${prefix ? prefix + "_" : ""}${timestampString()}.${extension}`;
 }
 
 /**
- * Ensures a directory exists, creating it if necessary
+ * Ensures a directory exists, creating it if necessary (Node.js only, no-op in browser)
  * @param dir - Directory path
  */
-export function ensureDirectoryExists(dir: string): void {
-  if (isNodeEnvironment()) {
-    // Node.js environment
-    const { fs } = getNodeModules();
-    if (fs && !fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
-    }
+export async function ensureDirectoryExists(dir: string): Promise<void> {
+  const fs = await getNodeFs();
+  if (fs && !fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
   }
-  // No-op in browser environment
 }
 
 /**
@@ -36,21 +37,22 @@ export function ensureDirectoryExists(dir: string): void {
  * @param data - Binary data as Uint8Array
  * @param filepath - File path to save to
  */
-export function saveBinaryFile(data: Uint8Array, filepath: string): void {
-  if (isNodeEnvironment()) {
-    // Node.js environment
-    const { fs, path } = getNodeModules();
-    if (!fs || !path) {
-      throw new Error("File system modules not available");
-    }
-
-    const dir = path.dirname(filepath);
-    ensureDirectoryExists(dir);
-    fs.writeFileSync(filepath, Buffer.from(data));
-  } else {
-    // Browser environment
+export async function saveBinaryFile(
+  data: Uint8Array,
+  filepath: string,
+): Promise<void> {
+  if (!isNodeEnvironment()) {
     throw new Error("Cannot save files directly in browser environment");
   }
+
+  const fs = await getNodeFs();
+  const path = await getNodePath();
+  if (!fs || !path) {
+    throw new Error("File system modules not available");
+  }
+
+  await ensureDirectoryExists(path.dirname(filepath));
+  fs.writeFileSync(filepath, data);
 }
 
 /**

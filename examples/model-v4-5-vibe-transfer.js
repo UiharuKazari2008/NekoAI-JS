@@ -29,7 +29,7 @@ async function testModelV45Full() {
         model: Model.V4_5,
         resPreset: Resolution.NORMAL_PORTRAIT,
         seed: 3417044607,
-        steps: 30,
+        steps: 28,
         scale: 5,
         sampler: Sampler.EULER_ANC,
         reference_image_multiple: [vibe_reference.base64], // the reference image will be re-encoded as vibe token

@@ -7,7 +7,7 @@
 import { parseImage } from "./image-utils";
 import { ImageInput } from "../types";
 import { isNodeEnvironment } from "./platform-utils";
-import pako from "pako";
+import { ungzip } from "pako";
 import extractChunks from "png-chunks-extract";
 import * as pngChunkText from "png-chunk-text";
 import ExifReader from "exifreader";
@@ -102,8 +102,6 @@ export interface ImageSummary {
   rawEntries: MetadataEntry[];
 }
 
-// All modules are now imported statically at the top of the file
-
 /**
  * Extract PNG metadata using chunk extraction
  * @param buffer - Array buffer containing PNG data
@@ -112,15 +110,9 @@ export interface ImageSummary {
  */
 async function extractPngMetadata(
   buffer: ArrayBuffer,
-  modules: Record<string, any>,
 ): Promise<MetadataEntry[]> {
-  if (!modules.extractChunks || !modules.pngChunkText) {
-    console.warn("PNG chunk extraction modules not available");
-    return [];
-  }
-
   try {
-    const chunks = modules.extractChunks(new Uint8Array(buffer));
+    const chunks = extractChunks(new Uint8Array(buffer));
     const textChunks = chunks
       .filter((chunk: any) => chunk.name === "tEXt" || chunk.name === "iTXt")
       .map((chunk: any) => {
@@ -131,18 +123,18 @@ async function extractPngMetadata(
 
           const headerBytes = dataArray.slice(0, 11);
           const decoder = new TextDecoder();
-          let header = decoder.decode(new Uint8Array(headerBytes));
+          const header = decoder.decode(new Uint8Array(headerBytes));
 
           if (header === "Description") {
             const contentBytes = dataArray.slice(11);
-            let txt = decoder.decode(new Uint8Array(contentBytes));
+            const txt = decoder.decode(new Uint8Array(contentBytes));
             return { keyword: "Description", text: txt };
           } else {
-            let txt = decoder.decode(new Uint8Array(dataArray));
+            const txt = decoder.decode(new Uint8Array(dataArray));
             return { keyword: "Unknown", text: txt };
           }
         } else {
-          return modules.pngChunkText.decode(chunk.data);
+          return pngChunkText.decode(chunk.data);
         }
       });
 
@@ -161,15 +153,9 @@ async function extractPngMetadata(
  */
 async function extractExifMetadata(
   file: File | Blob,
-  modules: Record<string, any>,
 ): Promise<MetadataEntry[]> {
-  if (!modules.ExifReader) {
-    console.warn("ExifReader module not available");
-    return [];
-  }
-
   try {
-    const data = await modules.ExifReader.load(file);
+    const data = await ExifReader.load(file);
 
     if (data.UserComment && data.UserComment.value) {
       // Convert to number array to ensure type safety
@@ -200,13 +186,7 @@ async function extractExifMetadata(
  */
 async function extractStealthMetadata(
   imageData: { width: number; height: number; base64: string },
-  modules: Record<string, any>,
 ): Promise<any> {
-  if (!modules.pako) {
-    console.warn("pako module not available, cannot extract stealth metadata");
-    return null;
-  }
-
   let canvas: HTMLCanvasElement | any;
   let ctx: CanvasRenderingContext2D | any;
   let img: HTMLImageElement | any;
@@ -267,8 +247,8 @@ async function extractStealthMetadata(
     // Extract the least significant bit from each alpha channel
     for (let x = 0; x < img.width; x++) {
       for (let y = 0; y < img.height; y++) {
-        let index = (y * img.width + x) * 4;
-        let a = imagePixels.data[index + 3];
+        const index = (y * img.width + x) * 4;
+        const a = imagePixels.data[index + 3];
         lowestData.push(a & 1);
       }
     }
@@ -281,7 +261,7 @@ async function extractStealthMetadata(
     if (magic === magicString) {
       const dataLength = reader.readInt32();
       const gzipData = reader.readNBytes(dataLength / 8);
-      const data = modules.pako.ungzip(new Uint8Array(gzipData));
+      const data = ungzip(new Uint8Array(gzipData));
       const jsonString = new TextDecoder().decode(data);
 
       try {
@@ -376,15 +356,12 @@ export async function extractImageMetadata(
       if (fileType === "image/png") {
         // For PNG files, extract chunks
         const buffer = await input.arrayBuffer();
-        metadata = await extractPngMetadata(buffer, {
-          extractChunks,
-          pngChunkText,
-        });
+        metadata = await extractPngMetadata(buffer);
       } else if (
         ["image/webp", "image/jpeg", "image/avif"].includes(fileType)
       ) {
         // For JPEG/WEBP/AVIF, extract EXIF
-        metadata = await extractExifMetadata(input, { ExifReader });
+        metadata = await extractExifMetadata(input);
       }
     } else if (typeof input === "string") {
       // For file paths or URLs, try to determine type and handle accordingly
@@ -401,17 +378,14 @@ export async function extractImageMetadata(
           const buffer = await fs.readFile(input);
 
           if (input.toLowerCase().endsWith(".png")) {
-            metadata = await extractPngMetadata(buffer.buffer, {
-              extractChunks,
-              pngChunkText,
-            });
+            metadata = await extractPngMetadata(buffer.buffer as ArrayBuffer);
           } else if (
             [".jpg", ".jpeg", ".webp", ".avif"].some((ext) =>
               input.toLowerCase().endsWith(ext),
             )
           ) {
             const blob = new Blob([buffer]);
-            metadata = await extractExifMetadata(blob, { ExifReader });
+            metadata = await extractExifMetadata(blob);
           }
         } catch (fsErr) {
           console.error("Failed to read local file:", fsErr);
@@ -421,7 +395,7 @@ export async function extractImageMetadata(
 
     // If no metadata found, try stealth extraction
     if (metadata.length === 0) {
-      const stealthData = await extractStealthMetadata(parsedImage, { pako });
+      const stealthData = await extractStealthMetadata(parsedImage);
 
       if (stealthData) {
         metadata = convertStealthMetadataToEntries(stealthData);
