@@ -41,8 +41,8 @@ export function prepareMetadataForApi(metadata: Metadata): any {
   delete params.action;
   delete params.prompt;
   delete params.resPreset;
-  // Already folded into v4_prompt / v4_negative_prompt
-  delete params.characterPrompts;
+  // Keep characterPrompts: webapp 787d312 sends it alongside v4_prompt
+  // (carries per-character `name` labels that v4_prompt has no slot for).
   // Client-side control flag; never send to the API
   delete params.deduplicate_tags;
 

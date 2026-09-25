@@ -266,8 +266,9 @@ describe("prepareMetadataForApi", () => {
     expect(payload.parameters.inpaintImg2ImgStrength).toBeUndefined();
   });
 
-  it("removes characterPrompts (already folded into v4_prompt)", () => {
-    expect(payload.parameters.characterPrompts).toBeUndefined();
+  it("keeps characterPrompts alongside v4_prompt (webapp parity)", () => {
+    expect(payload.parameters.characterPrompts).toHaveLength(1);
+    expect(payload.parameters.characterPrompts[0].prompt).toBe("1girl");
     expect(payload.parameters.v4_prompt).toBeDefined();
   });
 
